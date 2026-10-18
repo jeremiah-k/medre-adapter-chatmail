@@ -1,0 +1,8 @@
+# Scan production sources for dangerous subprocess calls and hard-coded secrets.
+# Test fixtures use literal credentials and temporary files; keep the test-only
+# exceptions out of the production scan instead of globally skipping them.
+exclude_dirs:
+  - tests
+skips:
+  - B101 # assert is used for defensive internal invariants
+  - B311 # non-cryptographic random usage
