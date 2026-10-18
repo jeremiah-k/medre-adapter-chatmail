@@ -1,0 +1,62 @@
+# This file controls the behavior of Trunk: https://docs.trunk.io/cli
+# To learn more about the format of this file, see https://docs.trunk.io/reference/trunk-yaml
+version: 0.1
+cli:
+  version: 1.25.0
+  sha256:
+    darwin_arm64: 2cff4f1cc63916db290359a058b88167beeac07a496682d9307a1804b498f225
+    darwin_x86_64: d0153b87a7eba4cd7d09a048b97bd60ac3ac15352def2bc3599d548875823ed3
+    linux_arm64: cc210d2185cf95bedbec06384be6ef342bdb7dcf3ff72dd08fe0e69859516887
+    linux_x86_64: 3845ff76a70cebb10e61a267ff719ffdccfa3ef6d877d51870a2c62b79603ab9
+    mingw_x86_64: 739f6aabc91d9ba4bce894314e01ab56d2c11b573c921b6f8caed6393c66c5f1
+    windows_x86_64: d883930b487d12a47e2c42fb83391417db4c4254c7346720c11e6a947c305a2c
+# Trunk provides extensibility via plugins. (https://docs.trunk.io/plugins)
+plugins:
+  sources:
+    - id: trunk
+      ref: v1.11.0
+      uri: https://github.com/trunk-io/plugins
+# Many linters and tools depend on runtimes - configure them here. (https://docs.trunk.io/runtimes)
+runtimes:
+  enabled:
+    - node@22.16.0
+    - python@3.14.4
+# This is the section where you manage your linters. (https://docs.trunk.io/check/configuration)
+lint:
+  enabled:
+    # 4.0.0 is the plugin-known-good release: pinact v5 requires long flags
+    # (--format/--update/--no-api) that the plugin wrapper still passes as
+    # single-dash v4 flags, so v5 cannot run through trunk at all.
+    - pinact@4.0.0
+    - actionlint@1.7.12
+    - bandit@1.9.4
+    # ruff and black pin the exact versions the CI quality job invokes via
+    # uvx (ruff==0.16.9, black==26.5.1 in .github/workflows/test.yml), so
+    # local trunk runs and CI agree. Keep the pins in sync.
+    - black@26.5.1
+    - checkov@3.3.29
+    - renovate@44.164.4
+    - ruff@0.16.9
+    - shellcheck@0.11.0
+    - shfmt@3.14.1
+    - taplo@0.10.0
+    - yamllint@1.38.0
+    - git-diff-check
+    - markdownlint@0.49.1
+    - prettier@3.9.10
+    - trufflehog@3.99.2
+  definitions:
+    - name: bandit
+      direct_configs:
+        - .bandit.yaml
+      commands:
+        - name: lint
+          run: bandit --exit-zero -c .bandit.yaml --format json --output ${tmpfile} ${target}
+          read_output_from: tmp_file
+actions:
+  disabled:
+    - trunk-announce
+    - trunk-check-pre-push
+    - trunk-fmt-pre-commit
+  enabled:
+    - trunk-upgrade-available
