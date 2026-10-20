@@ -9,7 +9,7 @@ import sys
 import threading
 from importlib.metadata import version
 from pathlib import Path
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any, Callable, Protocol
 
 from .config import ChatmailConfig
 from .state import ProfileLease, ProfileLeaseError
@@ -23,6 +23,21 @@ class SessionError(RuntimeError):
 
 class RpcCallError(SessionError):
     """The running native server rejected a request with a valid RPC response."""
+
+
+class _RpcSurface(Protocol):
+    """Structural surface of the native ``Rpc`` client the event pump uses.
+
+    ``deltachat_rpc_client`` ships no type information, and ``Rpc``
+    synthesizes one method per RPC name through ``__getattr__``; only the
+    members the event pump touches are declared here.
+    """
+
+    closing: bool
+
+    def get_next_event_batch(self) -> Any: ...
+
+    def __getattr__(self, name: str) -> Any: ...
 
 
 def server_path(configured: str = "") -> str:
@@ -43,25 +58,58 @@ def server_path(configured: str = "") -> str:
     return result
 
 
+def _pump_events(rpc: _RpcSurface, notify: Callable[[], None]) -> None:
+    """Drain native event batches; only recognized idle events skip a wake."""
+    try:
+        while events := rpc.get_next_event_batch():
+            if rpc.closing:
+                return
+            if _should_wake(events):
+                notify()
+    except Exception:
+        if not rpc.closing:
+            notify()
+
+
 def build_rpc(accounts_dir: str, executable: str, notify: Callable[[], None]) -> Any:
     from deltachat_rpc_client import Rpc
     from deltachat_rpc_client.rpc import JsonRpcError
 
-    class BridgeRpc(Rpc):
-        error_type = JsonRpcError
+    if TYPE_CHECKING:
 
-        def events_loop(self) -> None:
-            # Account queues in the official client are unbounded. Native
-            # messages already live in its database, so retain only a wakeup.
-            try:
-                while events := self.get_next_event_batch():
-                    if self.closing:
-                        return
-                    if _should_wake(events):
-                        notify()
-            except Exception:
-                if not self.closing:
-                    notify()
+        class BridgeRpc:
+            """Checked twin of the runtime subclass below. The checker cannot
+            follow a subclass of the untyped SDK class, so the override
+            surface is mirrored here and the pump body lives in
+            ``_pump_events``, where both twins delegate."""
+
+            error_type: type[BaseException] = RuntimeError
+            closing: bool = False
+
+            def __init__(
+                self, accounts_dir: str, *, rpc_server_path: str, stderr: int
+            ) -> None: ...
+
+            def get_next_event_batch(self) -> Any:
+                raise NotImplementedError
+
+            def __getattr__(self, name: str) -> Any:
+                raise AttributeError(name)
+
+            def events_loop(self) -> None:
+                # Account queues in the official client are unbounded. Native
+                # messages already live in its database, so retain only a wakeup.
+                _pump_events(self, notify)
+
+    else:
+
+        class BridgeRpc(Rpc):
+            error_type = JsonRpcError
+
+            def events_loop(self) -> None:
+                # Account queues in the official client are unbounded. Native
+                # messages already live in its database, so retain only a wakeup.
+                _pump_events(self, notify)
 
     # PIPE stderr is never drained by the SDK and can block the server.
     # The wrapper sanitizes startup errors and owns teardown even when the
@@ -98,18 +146,21 @@ def _should_wake(events: object) -> bool:
 
 class ChatmailSession:
     def __init__(
-        self, config: ChatmailConfig, *, rpc_factory: Callable = build_rpc
+        self,
+        config: ChatmailConfig,
+        *,
+        rpc_factory: Callable[[str, str, Callable[[], None]], Any] = build_rpc,
     ) -> None:
         self.config = config
         self.rpc_factory = rpc_factory
-        self.rpc = None
-        self.lease = None
+        self.rpc: Any = None
+        self.lease: ProfileLease | None = None
         self.wake = asyncio.Event()
         self._scheduled = threading.Event()
         self._lock = asyncio.Lock()
         self._closing = False
         self._used = False
-        self._active: set[asyncio.Task] = set()
+        self._active: set[asyncio.Task[Any]] = set()
 
     async def start(self) -> None:
         if self._used:
@@ -162,7 +213,7 @@ class ChatmailSession:
             with contextlib.suppress(ProcessLookupError):
                 process.kill()
 
-    async def _run(self, function: Callable, *args: Any) -> Any:
+    async def _run(self, function: Callable[..., Any], *args: Any) -> Any:
         def invoke() -> Any:
             try:
                 return function(*args)
@@ -193,7 +244,7 @@ class ChatmailSession:
                 "Chatmail RPC operation failed; inspect the native profile"
             ) from None
 
-    def _finished(self, task: asyncio.Task) -> None:
+    def _finished(self, task: asyncio.Task[Any]) -> None:
         self._active.discard(task)
         if not task.cancelled():
             task.exception()
@@ -205,7 +256,7 @@ class ChatmailSession:
             return await self._run(getattr(self.rpc, method), *args)
 
     def alive(self) -> bool:
-        attributes = vars(self.rpc) if self.rpc is not None else {}
+        attributes: dict[str, Any] = vars(self.rpc) if self.rpc is not None else {}
         process = attributes.get("process")
         events = attributes.get("events_thread")
         return bool(

@@ -7,6 +7,7 @@ import os
 import sqlite3
 import threading
 from pathlib import Path
+from typing import Any
 
 import msgspec
 
@@ -130,7 +131,7 @@ class Journal:
                 (identity, encoded, chat, body),
             )
 
-    def rows(self) -> list[dict]:
+    def rows(self) -> list[dict[str, Any]]:
         with self.lock:
             return [
                 dict(row)
@@ -151,7 +152,7 @@ class Journal:
             self.connection.execute("DELETE FROM pending WHERE identity=?", (identity,))
 
     @staticmethod
-    def provenance(row: dict) -> DeliveryAttemptProvenance:
+    def provenance(row: dict[str, Any]) -> DeliveryAttemptProvenance:
         return msgspec.convert(
             json.loads(row["provenance"]), type=DeliveryAttemptProvenance
         )

@@ -24,6 +24,7 @@ from medre.core.contracts.delivery import (
     DeferredHandoffCompleted,
     DeferredHandoffFailed,
 )
+from medre.core.ingress import IngressProvenance
 from medre.core.rendering.renderer import RenderingResult
 
 from .codec import ChatmailCodec, native_id
@@ -75,23 +76,33 @@ def validate_payload(
     return conversation, text
 
 
+def _open_journal(state_dir: str, scope: str) -> Journal:
+    """Construct the durable queue as a to_thread-friendly callable."""
+    return Journal(state_dir, scope)
+
+
 class ChatmailAdapter(AdapterContract):
     platform = "chatmail"
     role = AdapterRole.HYBRID
 
     def __init__(
-        self, config: ChatmailConfig, *, session_factory: Callable = ChatmailSession
+        self,
+        config: ChatmailConfig,
+        *,
+        session_factory: Callable[[ChatmailConfig], ChatmailSession] = ChatmailSession,
     ) -> None:
         super().__init__()
         self.config = config.validate()
         self.adapter_id = config.adapter_id
         self._capabilities = replace(CAPABILITIES, max_text_bytes=config.max_text_bytes)
         self.ctx: AdapterContext | None = None
-        self.session = None
-        self.journal = None
-        self.codec = None
-        self._session_factory = session_factory
-        self._task = None
+        self.session: ChatmailSession | None = None
+        self.journal: Journal | None = None
+        self.codec: ChatmailCodec | None = None
+        self._session_factory: Callable[[ChatmailConfig], ChatmailSession] = (
+            session_factory
+        )
+        self._task: asyncio.Task[None] | None = None
         self._state = "unknown"
         self._profile = ""
         self._cursors: dict[int, int] = {}
@@ -133,7 +144,7 @@ class ChatmailAdapter(AdapterContract):
         try:
             await self._connect()
             self.journal = await asyncio.to_thread(
-                Journal, self.config.state_dir, self._profile
+                _open_journal, self.config.state_dir, self._profile
             )
             self._task = asyncio.create_task(
                 self._run(), name=f"chatmail:{self.adapter_id}"
@@ -144,15 +155,20 @@ class ChatmailAdapter(AdapterContract):
             raise
 
     async def _connect(self) -> None:
-        self.session = self._session_factory(self.config)
-        await self.session.start()
+        session = self._session_factory(self.config)
+        self.session = session
+        await session.start()
         account = self.config.account_id
-        await self.session.call("stop_io_for_all_accounts")
-        if account not in await self.session.call(
+        await session.call("stop_io_for_all_accounts")
+        ctx = self.ctx
+        if ctx is None or ctx.load_checkpoint is None:
+            raise AdapterPermanentError("Chatmail durable checkpoints are unavailable")
+        load_checkpoint = ctx.load_checkpoint
+        if account not in await session.call(
             "get_all_account_ids"
-        ) or not await self.session.call("is_configured", account):
+        ) or not await session.call("is_configured", account):
             raise AdapterPermanentError("The selected Chatmail account is unconfigured")
-        blob_dir = await self.session.call("get_blob_dir", account)
+        blob_dir = await session.call("get_blob_dir", account)
         if not isinstance(blob_dir, str) or not blob_dir:
             raise AdapterPermanentError("Chatmail profile identity is unavailable")
         profile = Path(blob_dir).parent.name
@@ -167,7 +183,7 @@ class ChatmailAdapter(AdapterContract):
         cursors: dict[int, int] = {}
         recovery_heads: dict[int, int] = {}
         for conversation in self.config.chats:
-            info = await self.session.call("get_basic_chat_info", account, conversation)
+            info = await session.call("get_basic_chat_info", account, conversation)
             if (
                 info.get("isContactRequest") is not False
                 or info.get("isDeviceChat") is not False
@@ -177,16 +193,14 @@ class ChatmailAdapter(AdapterContract):
                 raise AdapterPermanentError(
                     "Chatmail destinations must be accepted groups or direct conversations with other contacts"
                 )
-            members = await self.session.call(
-                "get_chat_contacts", account, conversation
-            )
+            members = await session.call("get_chat_contacts", account, conversation)
             if not any(type(member) is int and member > 9 for member in members):
                 raise AdapterPermanentError(
                     "Chatmail conversations require at least one other contact"
                 )
             stream = f"chatmail:{account}:{conversation}"
-            checkpoint = await self.ctx.load_checkpoint(stream)
-            ids = await self.session.call(
+            checkpoint = await load_checkpoint(stream)
+            ids = await session.call(
                 "get_message_ids", account, conversation, False, False
             )
             recovery_heads[conversation] = max(ids, default=0)
@@ -209,16 +223,19 @@ class ChatmailAdapter(AdapterContract):
                         "Chatmail checkpoint belongs to a different native profile"
                     )
                 cursors[conversation] = cursor
-        await self.session.call("start_io", account)
+        await session.call("start_io", account)
         self._cursors = cursors
         self._recovery_heads = recovery_heads
         self._download_requests.clear()
-        self.session.wake.set()
+        session.wake.set()
 
     async def _checkpoint(
         self, conversation: int, cursor: int, *, update_cursor: bool = True
     ) -> None:
-        await self.ctx.commit_checkpoint(
+        ctx = self.ctx
+        if ctx is None or ctx.commit_checkpoint is None:
+            raise AdapterPermanentError("Chatmail durable checkpoints are unavailable")
+        await ctx.commit_checkpoint(
             f"chatmail:{self.config.account_id}:{conversation}",
             str(cursor),
             json.dumps({"profile_id": self._profile}),
@@ -249,14 +266,19 @@ class ChatmailAdapter(AdapterContract):
             raise first_error
 
     async def _scan_chat(self, conversation: int) -> None:
-        ids = await self.session.call(
+        session = self.session
+        codec = self.codec
+        ctx = self.ctx
+        if session is None or codec is None or ctx is None:
+            raise SessionError("Chatmail native session is unavailable")
+        ids = await session.call(
             "get_message_ids", self.config.account_id, conversation, False, False
         )
         pending = sorted(i for i in ids if i > self._cursors[conversation])
         if len(pending) > 32:
-            self.session.wake.set()
+            session.wake.set()
         for message_id in pending[:32]:
-            snapshot = await self.session.call(
+            snapshot = await session.call(
                 "get_message", self.config.account_id, message_id
             )
             if snapshot.get("chatId") != conversation:
@@ -292,7 +314,7 @@ class ChatmailAdapter(AdapterContract):
                             now + self.config.poll_interval_seconds
                         )
                         try:
-                            await self.session.call(
+                            await session.call(
                                 "download_full_message",
                                 self.config.account_id,
                                 message_id,
@@ -306,10 +328,10 @@ class ChatmailAdapter(AdapterContract):
                             ) from None
                     break
                 self._download_requests.pop((conversation, message_id), None)
-            event = self.codec.decode(snapshot, timestamp=self.ctx.clock())
+            event = codec.decode(snapshot, timestamp=ctx.clock())
             if event is not None:
                 try:
-                    provenance = (
+                    provenance: IngressProvenance = (
                         "recovered"
                         if message_id <= self._recovery_heads[conversation]
                         else "live"
@@ -370,46 +392,51 @@ class ChatmailAdapter(AdapterContract):
         )
 
     async def _flush(self) -> None:
-        for row in await asyncio.to_thread(self.journal.rows):
-            provenance = self.journal.provenance(row)
+        session = self.session
+        journal = self.journal
+        ctx = self.ctx
+        report = ctx.report_delivery_feedback if ctx is not None else None
+        if session is None or journal is None or ctx is None or report is None:
+            raise AdapterSendError("Chatmail adapter is not accepting deliveries")
+        for row in await asyncio.to_thread(journal.rows):
+            provenance = journal.provenance(row)
+            feedback: DeferredHandoffCompleted | DeferredHandoffFailed
             if row["status"] == "queued":
                 # No native handoff has occurred yet. Check deterministically
                 # before committing a potentially-uncertain submission claim.
                 rejected = row["chat"] not in self.config.chats
                 if not rejected:
-                    members = await self.session.call(
+                    members = await session.call(
                         "get_chat_contacts", self.config.account_id, row["chat"]
                     )
                     rejected = not any(
                         type(member) is int and member > 9 for member in members
                     )
                 if rejected:
-                    await asyncio.to_thread(
-                        self.journal.update, row["identity"], "rejected"
-                    )
+                    await asyncio.to_thread(journal.update, row["identity"], "rejected")
                     row["status"] = "rejected"
                 else:
                     await asyncio.to_thread(
-                        self.journal.update, row["identity"], "submitting"
+                        journal.update, row["identity"], "submitting"
                     )
                     # Commit the claim immediately before invoking native send.
                     # A crash or RPC rejection after this point is uncertain.
                     try:
-                        message_id = await self.session.call(
+                        message_id = await session.call(
                             "send_msg",
                             self.config.account_id,
                             row["chat"],
                             {"text": row["body"]},
                         )
                     except RpcCallError:
-                        self.session.wake.set()
+                        session.wake.set()
                         continue
                     if type(message_id) is not int or message_id <= 9:
                         raise SessionError(
                             "Chatmail returned an invalid queued message ID"
                         )
                     await asyncio.to_thread(
-                        self.journal.update, row["identity"], "pending", message_id
+                        journal.update, row["identity"], "pending", message_id
                     )
                     row["status"], row["native"] = "pending", message_id
             if row["status"] == "rejected":
@@ -432,14 +459,14 @@ class ChatmailAdapter(AdapterContract):
                 )
             else:
                 try:
-                    snapshot = await self.session.call(
+                    snapshot = await session.call(
                         "get_message", self.config.account_id, row["native"]
                     )
                 except RpcCallError:
                     await asyncio.to_thread(
-                        self.journal.update, row["identity"], "abandoned"
+                        journal.update, row["identity"], "abandoned"
                     )
-                    self.session.wake.set()
+                    session.wake.set()
                     continue
                 if (
                     snapshot.get("id"),
@@ -469,14 +496,17 @@ class ChatmailAdapter(AdapterContract):
                     )
                 else:
                     continue
-            await self.ctx.report_delivery_feedback(feedback)
-            await asyncio.to_thread(self.journal.remove, row["identity"])
+            await report(feedback)
+            await asyncio.to_thread(journal.remove, row["identity"])
 
     async def _run(self) -> None:
         while not self._stopping:
+            session = self.session
+            if session is None:
+                raise SessionError("Chatmail native session is unavailable")
             try:
-                self.session.wake.clear()
-                if not self.session.alive():
+                session.wake.clear()
+                if not session.alive():
                     raise SessionError("Chatmail native process is unavailable")
                 scan_error: Exception | None = None
                 try:
@@ -489,13 +519,13 @@ class ChatmailAdapter(AdapterContract):
                 await self._flush()
                 if scan_error is not None:
                     raise scan_error
-                connectivity = await self.session.call(
+                connectivity = await session.call(
                     "get_connectivity", self.config.account_id
                 )
                 self._state = "healthy" if connectivity >= 3000 else "degraded"
                 try:
                     await asyncio.wait_for(
-                        self.session.wake.wait(), self.config.poll_interval_seconds
+                        session.wake.wait(), self.config.poll_interval_seconds
                     )
                 except TimeoutError:  # nosec B110 - periodic scan fallback
                     pass
@@ -507,7 +537,7 @@ class ChatmailAdapter(AdapterContract):
             except SessionError:
                 self._state = "degraded"
                 try:
-                    await self.session.stop()
+                    await session.stop()
                 except Exception:
                     self._state = "failed"
                     return
@@ -522,8 +552,11 @@ class ChatmailAdapter(AdapterContract):
                     self._state = "degraded"
                     # A reconnect may fail after stop_io or some cursors have
                     # been loaded. The next attempt must start a fresh session.
+                    session = self.session
+                    if session is None:
+                        raise
                     try:
-                        await self.session.stop()
+                        await session.stop()
                     except Exception:
                         self._state = "failed"
                         return

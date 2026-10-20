@@ -60,3 +60,13 @@ ignore = ["ASYNC109"]
 
 [tool.black]
 target-version = ["py311"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+explicit_package_bases = true
+follow_imports = "silent"
+
+[[tool.mypy.overrides]]
+module = ["deltachat_rpc_client", "deltachat_rpc_client.*"]
+ignore_missing_imports = true
