@@ -6,7 +6,7 @@ import math
 import re
 from collections.abc import Iterable
 from dataclasses import dataclass, replace
-from typing import Any
+from typing import Any, TypeGuard
 
 from medre.config.identifiers import adapter_id_problem
 from medre.config.paths import MedrePaths
@@ -22,8 +22,12 @@ def chat_id(value: str | None) -> int:
     return number
 
 
-def plain_text(value: object) -> bool:
-    """Reject malformed Unicode and control bytes without rewriting content."""
+def plain_text(value: object) -> TypeGuard[str]:
+    """Reject malformed Unicode and control bytes without rewriting content.
+
+    Narrowing a wire value to trusted text is the only claim this check
+    makes; callers still own emptiness and length policy.
+    """
     if not isinstance(value, str) or any(
         ord(char) < 32 and char not in "\n\r\t" for char in value
     ):

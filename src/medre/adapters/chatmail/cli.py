@@ -8,8 +8,10 @@ import getpass
 import json
 import os
 import sys
+from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
+from typing import Any
 
 from medre.config.paths import resolve
 
@@ -88,6 +90,10 @@ def selected_config(options: argparse.Namespace) -> ChatmailConfig:
             "The selected Chatmail adapter is absent from the configuration"
         )
     config = item.config
+    if not isinstance(config, ChatmailConfig):
+        raise UsageError(
+            "The selected Chatmail adapter is not a Chatmail configuration"
+        )
     config = replace(
         config,
         accounts_dir=(
@@ -132,9 +138,9 @@ async def execute(
     options: argparse.Namespace,
     config: ChatmailConfig,
     *,
-    session_factory=ChatmailSession,
-) -> object:
-    qr = None
+    session_factory: Callable[[ChatmailConfig], ChatmailSession] = ChatmailSession,
+) -> dict[str, Any] | list[dict[str, Any]]:
+    qr: str | None = None
     if options.command == "join":
         qr = read_qr(options)
         if not qr.upper().startswith("OPENPGP4FPR:") and not qr.lower().startswith(
@@ -206,7 +212,7 @@ async def execute(
                 ) from None
             return {"chat_id": conversation, "can_send": True}
         entries = await session.call("get_chatlist_entries", account, None, None, None)
-        chats = []
+        chats: list[dict[str, Any]] = []
         for conversation in entries:
             if conversation <= 9:
                 continue

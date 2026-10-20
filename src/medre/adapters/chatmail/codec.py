@@ -6,6 +6,7 @@ import hashlib
 import json
 from collections.abc import Mapping
 from datetime import datetime, timezone
+from typing import Any
 
 from medre.core.events.canonical import CanonicalEvent, EventRelation, NativeRef
 from medre.core.events.metadata import EventMetadata, NativeMetadata, TransportMetadata
@@ -24,7 +25,7 @@ class ChatmailCodec:
         self.profile = profile
 
     def decode(
-        self, snapshot: Mapping, *, timestamp: datetime
+        self, snapshot: Mapping[str, Any], *, timestamp: datetime
     ) -> CanonicalEvent | None:
         message_id = snapshot.get("id")
         conversation = snapshot.get("chatId")
@@ -59,7 +60,7 @@ class ChatmailCodec:
                 return None
         reference = native_id(self.profile, message_id)
         identity = json.dumps([self.config.adapter_id, self.profile, message_id])
-        relations = ()
+        relations: tuple[EventRelation, ...] = ()
         quote = snapshot.get("quote")
         if isinstance(quote, Mapping) and quote.get("kind") == "WithMessage":
             quoted_id, quoted_chat = quote.get("messageId"), quote.get("chatId")
