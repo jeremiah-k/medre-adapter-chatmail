@@ -270,6 +270,9 @@ def test_public_profile_directory_is_rejected_without_chmod(tmp_path):
         pytest.skip("POSIX permissions")
     directory = tmp_path / "public-profile"
     directory.mkdir(mode=0o755)
+    # Establish public permissions explicitly; a restrictive inherited umask
+    # would otherwise make this a private directory and invalidate the premise.
+    directory.chmod(0o755)
     with pytest.raises(UsageError, match="only to its owner"):
         create_profile_directory(str(directory))
     assert directory.stat().st_mode & 0o077
