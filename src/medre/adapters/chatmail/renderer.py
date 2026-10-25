@@ -7,6 +7,7 @@ from typing import Any
 
 from medre.adapters.metadata import project_source_fields
 from medre.core.events.canonical import CanonicalEvent
+from medre.core.events.text import select_message_body
 from medre.core.rendering.attribution import (
     build_relay_attribution,
     format_relay_prefix,
@@ -51,9 +52,7 @@ class ChatmailRenderer:
         ):
             raise ValueError("Chatmail rendering requires a configured chat-ID channel")
         destination = config.destination(ctx.target_channel)
-        text = event.payload.get("body", event.payload.get("text", ""))
-        if not isinstance(text, str):
-            raise ValueError("Chatmail message body must be text")
+        text = select_message_body(event.payload)
         fallback = ctx.delivery_strategy == "fallback_text"
         if fallback:
             text = degrade_relations_inline(event, text)
