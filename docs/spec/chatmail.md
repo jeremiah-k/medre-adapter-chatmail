@@ -95,3 +95,33 @@ The polling interval bounds retries after a rejected download.
 
 Profile shutdown MUST release its lease even if draining native calls times out.
 Peer display labels MUST be printable on one line before relay attribution.
+
+## Per-message native attribution
+
+By default, `native_sender_attribution` adds the source sender and optional origin
+label to Delta Chat's native `overrideSenderName` presentation field. It MUST NOT
+change the sending account, contact profile, or email address. Source verification
+annotations remain attached to the display label. The existing body prefix remains
+independently controlled by `relay_prefix`; setting `native_sender_attribution: false`
+disables the native presentation field.
+
+Native names MUST fit 1024 UTF-8 bytes and contain no control characters,
+bidirectional controls, invisible Unicode format characters (except U+200C and
+U+200D joiners), or line separators. A valid label MUST also contain a visible base character;
+joiners and combining marks alone cannot form a sender name. JSON Schema `maxLength` counts Unicode
+characters, not encoded bytes; the sender-name validator enforces the byte cap
+at ingress, rendering and delivery boundaries. Unsafe, absent or oversized
+display names omit only this optional field;
+the configured body remains intact. Delivery validation MUST reject malformed
+renderer payloads rather than silently changing their claims.
+
+The durable journal MUST bind native presentation to the same immutable attempt as
+the body and destination. Migration of older rows adds an absent sender override
+without changing native correlations or recovery policy. Incoming native overrides
+are retained as bounded `sender_override` display claims, separately from the
+profile-scoped contact identity and `sender_label`. They MUST NOT grant original
+sender identity, encryption, relation binding, or delivery authority.
+
+This carrier conveys native sender/origin presentation, not the complete shared
+bridge-context object or canonical event references. SMTP acceptance still yields
+only `remote_service` confirmation; no recipient delivery or reading is implied.

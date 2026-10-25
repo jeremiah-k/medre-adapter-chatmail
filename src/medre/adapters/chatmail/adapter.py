@@ -28,7 +28,7 @@ from medre.core.ingress import IngressProvenance
 from medre.core.rendering.renderer import RenderingResult
 
 from .codec import ChatmailCodec, native_id
-from .config import ChatmailConfig, plain_text
+from .config import ChatmailConfig, plain_text, sender_name
 from .session import ChatmailSession, RpcCallError, SessionError
 from .state import Journal, PendingLimitError
 
@@ -55,7 +55,8 @@ CAPABILITIES = AdapterCapabilities(
 
 def validate_payload(
     result: RenderingResult, config: ChatmailConfig
-) -> tuple[int, str]:
+) -> tuple[int, str, str | None]:
+    """Validate the complete rendered claim before durable attempt admission."""
     payload = result.payload
     if result.target_adapter != config.adapter_id or not isinstance(payload, Mapping):
         raise AdapterPermanentError("Invalid Chatmail delivery target or payload")
@@ -67,13 +68,19 @@ def validate_payload(
     if (
         type(payload.get("chat_id")) is not int
         or payload["chat_id"] != conversation
-        or set(payload) != {"chat_id", "text"}
+        or not {"chat_id", "text"} <= set(payload)
+        or set(payload) - {"chat_id", "text", "override_sender_name"}
         or not plain_text(text)
         or not text.strip()
         or len(text.encode("utf-8")) > config.max_text_bytes
     ):
         raise AdapterPermanentError("Invalid rendered Chatmail addressing or text")
-    return conversation, text
+    if "override_sender_name" in payload:
+        override = payload["override_sender_name"]
+        if not config.native_sender_attribution or not sender_name(override):
+            raise AdapterPermanentError("Invalid rendered Chatmail sender attribution")
+        return conversation, text, override
+    return conversation, text, None
 
 
 def _open_journal(state_dir: str, scope: str) -> Journal:
@@ -346,7 +353,7 @@ class ChatmailAdapter(AdapterContract):
             await asyncio.sleep(0)
 
     async def deliver(self, result: RenderingResult) -> AdapterHandoffResult:
-        conversation, text = validate_payload(result, self.config)
+        conversation, text, override = validate_payload(result, self.config)
         provenance = result.attempt_provenance
         if self.ctx is None:
             raise AdapterSendError("Chatmail adapter is not accepting deliveries")
@@ -376,6 +383,7 @@ class ChatmailAdapter(AdapterContract):
                 conversation,
                 text,
                 self.config.max_pending,
+                override,
             )
         except PendingLimitError:
             raise AdapterSendError(
@@ -421,12 +429,15 @@ class ChatmailAdapter(AdapterContract):
                     )
                     # Commit the claim immediately before invoking native send.
                     # A crash or RPC rejection after this point is uncertain.
+                    message = {"text": row["body"]}
+                    if row["sender_override"] is not None:
+                        message["overrideSenderName"] = row["sender_override"]
                     try:
                         message_id = await session.call(
                             "send_msg",
                             self.config.account_id,
                             row["chat"],
-                            {"text": row["body"]},
+                            message,
                         )
                     except RpcCallError:
                         session.wake.set()
