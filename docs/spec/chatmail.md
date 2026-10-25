@@ -105,8 +105,13 @@ annotations remain attached to the display label. The existing body prefix remai
 independently controlled by `relay_prefix`; setting `native_sender_attribution: false`
 disables the native presentation field.
 
-Native names MUST fit 1024 UTF-8 bytes and contain no control characters or line
-separators. Unsafe, absent or oversized display names omit only this optional field;
+Native names MUST fit 1024 UTF-8 bytes and contain no control characters,
+bidirectional controls, invisible Unicode format characters (except U+200C and
+U+200D joiners), or line separators. A valid label MUST also contain a visible base character;
+joiners and combining marks alone cannot form a sender name. JSON Schema `maxLength` counts Unicode
+characters, not encoded bytes; the sender-name validator enforces the byte cap
+at ingress, rendering and delivery boundaries. Unsafe, absent or oversized
+display names omit only this optional field;
 the configured body remains intact. Delivery validation MUST reject malformed
 renderer payloads rather than silently changing their claims.
 

@@ -40,7 +40,18 @@ async def test_native_sender_and_origin_are_per_message_with_explicit_opt_out(co
 
 
 @pytest.mark.parametrize(
-    "origin", ["line\nbreak", "line\rbreak", "tab\tname", "\x7f", "x" * 1024]
+    "origin",
+    [
+        "line\nbreak",
+        "line\rbreak",
+        "tab\tname",
+        "\x7f",
+        "x\u200by",
+        "x\u202ey",
+        "x\u2066y",
+        "é" * 513,
+        "x" * 1024,
+    ],
 )
 async def test_unsafe_or_oversized_header_claim_falls_back_to_existing_body(
     config, origin
@@ -69,6 +80,15 @@ async def test_unsafe_or_oversized_header_claim_falls_back_to_existing_body(
         "x\ty",
         "\x85",
         "\u2028",
+        "Alice\u200bHidden",
+        "Alice\u200eHidden",
+        "Alice\u202eHidden",
+        "Alice\u2066Hidden",
+        "Alice\u2069Hidden",
+        "Alice\ufeffHidden",
+        "Alice\u00adHidden",
+        "\u200c\u200d",  # Joiners alone are not a visible sender name.
+        "\u0301",  # Combining mark without a base has no visible name.
         "\ud800",
         "界" * 342,
     ],
@@ -85,6 +105,7 @@ def test_payload_boundary_rejects_invalid_native_names(config, value):
 def test_name_budget_preserves_unicode_and_enforces_configuration(config):
     """UTF-8 budgets preserve emoji joiners and reject nonboolean policy values."""
     assert sender_name("Alice 👩\u200d🔬 [世界]")
+    assert sender_name("نام\u200cخانوادگی")  # Preserve script joining semantics.
     assert sender_name("界" * 341)
     assert not sender_name("界" * 342)
     with pytest.raises(ValueError, match="boolean"):
@@ -198,5 +219,35 @@ def test_remote_override_is_evidence_without_replacing_transport_sender(config):
         (Path(__file__).parents[1] / "docs/schemas/native.schema.json").read_text()
     )
     Draft202012Validator(schema).validate(dict(native))
-    invalid = codec.decode(snapshot(overrideSenderName="evil\r\nheader"), timestamp=NOW)
-    assert "sender_override" not in invalid.metadata.native.data["chatmail"]
+    for unsafe in (
+        "evil\r\nheader",
+        "Alice\u200bHidden",
+        "Alice\u202eHidden",
+        "Alice\u2066Hidden",
+        "é" * 513,  # 513 characters, but 1026 UTF-8 bytes.
+    ):
+        invalid = codec.decode(snapshot(overrideSenderName=unsafe), timestamp=NOW)
+        assert "sender_override" not in invalid.metadata.native.data["chatmail"]
+
+
+def test_native_schema_does_not_override_runtime_byte_budget(config):
+    """JSON Schema lengths count characters; native claims have a byte cap."""
+    schema = json.loads(
+        (Path(__file__).parents[1] / "docs/schemas/native.schema.json").read_text()
+    )
+    assert schema["properties"]["sender_override"]["maxLength"] == 1024
+    assert schema["properties"]["sender_override"]["minLength"] == 1
+    too_long = "é" * 513
+    assert len(too_long) <= 1024 and len(too_long.encode("utf-8")) > 1024
+    assert not sender_name(too_long)
+    with pytest.raises(AdapterPermanentError, match="sender attribution"):
+        validate_payload(
+            rendered(
+                payload={
+                    "chat_id": 10,
+                    "text": "hello",
+                    "override_sender_name": too_long,
+                }
+            ),
+            config,
+        )

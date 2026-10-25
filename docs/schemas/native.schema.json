@@ -34,8 +34,9 @@
     },
     "sender_override": {
       "type": "string",
+      "minLength": 1,
       "maxLength": 1024,
-      "description": "Untrusted native per-message display claim; does not replace contact identity."
+      "description": "Untrusted per-message display claim; does not replace contact identity. maxLength counts Unicode characters; ingress and delivery validators separately enforce a 1024 UTF-8 byte limit and reject display-altering format controls other than Unicode joiners."
     }
   },
   "required": [

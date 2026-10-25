@@ -44,15 +44,18 @@ def sender_name(value: object) -> TypeGuard[str]:
     """Accept a bounded single-line display claim without rewriting its Unicode.
 
     This is presentation text for Delta Chat's per-message sender override, not
-    an email address or a verified identity. Reject controls and line separators
-    so a name cannot inject additional header-like content.
+    an email address or a verified identity. Reject controls, invisible format
+    characters and line separators; retain Unicode joiners for valid names.
     """
     return (
         plain_text(value)
         and bool(value.strip())
+        # Joiners and combining marks alone have no visible sender label.
+        and any(unicodedata.category(char)[0] in "LNPS" for char in value)
         and len(value.encode("utf-8")) <= 1024
         and not any(
-            unicodedata.category(char) == "Cc" or char in "\u2028\u2029"
+            (unicodedata.category(char) in {"Cc", "Cf"} and char not in "\u200c\u200d")
+            or char in "\u2028\u2029"
             for char in value
         )
     )
