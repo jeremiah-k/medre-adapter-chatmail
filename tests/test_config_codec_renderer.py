@@ -221,3 +221,31 @@ def test_editor_schema_accepts_actual_sample_adapter_block():
     sample = sample_config()
     # Adapter instance IDs belong to the enclosing MEDRE transport map.
     Draft202012Validator(schema).validate(sample.config)
+
+
+@pytest.mark.parametrize(
+    "payload,expected",
+    [
+        ({"body": "current", "text": "legacy"}, "legacy"),
+        (
+            {
+                "body": "current",
+                "text": "legacy",
+                "formatting": {"version": 1, "spans": []},
+            },
+            "current",
+        ),
+    ],
+)
+async def test_renderer_preserves_shared_text_selection(config, payload, expected):
+    """Only optional style metadata may make body supersede a legacy alias."""
+    import msgspec
+
+    event = ChatmailCodec(config, "profile").decode(snapshot(), timestamp=NOW)
+    event = msgspec.structs.replace(event, payload=payload)
+    ctx = RenderingContext(
+        target_adapter="mail", target_channel="10",
+        target_platform="chatmail", delivery_strategy="direct",
+    )
+    result = await ChatmailRenderer({"mail": config}).render(event, ctx)
+    assert result.payload["text"] == expected
