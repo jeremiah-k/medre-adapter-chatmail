@@ -1,0 +1,45 @@
+{
+  "status": "passed",
+  "source": "two authored canonical Matrix fixtures",
+  "destination": "independent Delta Chat core 2.63.0 profile via GreenMail",
+  "receipts": [
+    {
+      "source_event_id": "chatmail-attribution-native-1",
+      "native_message_id": 20,
+      "override_sender_name": "Alice & 🦉 [Origin <Network>]",
+      "text": "[Origin <Network>] Alice & 🦉: Native attribution 1 café <&> 🦉",
+      "contact_id": 10,
+      "contact_address": "bot@chatmail.test",
+      "contact_display_name": "MailBot"
+    },
+    {
+      "source_event_id": "chatmail-attribution-native-2",
+      "native_message_id": 21,
+      "override_sender_name": "Bob 世界 [Origin <Network>]",
+      "text": "[Origin <Network>] Bob 世界: Native attribution 2 café <&> 🦉",
+      "contact_id": 10,
+      "contact_address": "bot@chatmail.test",
+      "contact_display_name": "MailBot"
+    }
+  ],
+  "confirmation_level": "remote_service",
+  "limits": "Native display claims only; no shared context IDs and no recipient delivery authority.",
+  "core_revision": "8ed768d9a8053496bab1f60f268edb587519d81f",
+  "sdk_version": "2.63.0",
+  "source_sha256": {
+    "src/medre/adapters/chatmail/__init__.py": "f68b0c723566c7e4e009b93e4fa1bed9c337fcce9bc9e64cd2f59abe3976db6f",
+    "src/medre/adapters/chatmail/adapter.py": "b1673392a22725e9a7f4865493fc2382318e24bcb35e1a38882b5d70d9cb4517",
+    "src/medre/adapters/chatmail/cli.py": "9a0042b406e3d5db05c44d2a625e96d741663d98b08875e088aa2b0ca88e4c47",
+    "src/medre/adapters/chatmail/codec.py": "5bfb524bf98b17333e9703e80714110db3000836f69395d020e5f99236b20dfa",
+    "src/medre/adapters/chatmail/compat.py": "2842978d5f3009ad577a35d5c40ea668c62c9c60a96fb3c65728e2f80dd6c438",
+    "src/medre/adapters/chatmail/config.py": "5bd07b1e80603f225efa517d26d0d3ee6528bd39c5ce996f0cb4c30fff019521",
+    "src/medre/adapters/chatmail/fake.py": "063688aa047092c0ba5ac6554cc7c19cd6a52903333a69f1e2746d29b80dd797",
+    "src/medre/adapters/chatmail/metadata.py": "eb9917b8ce526cc10013a50be0fd5fcd480622343a20be0c1cb1a9c291768ea3",
+    "src/medre/adapters/chatmail/plugin.py": "5efb35f04cbe96f9a75831945f16ab9b3ffda20866b57ac41f4f2fc0d8294fb0",
+    "src/medre/adapters/chatmail/renderer.py": "77f96eb21e6623bbcf9f436f6bd713e4be151ebec7a054cf47a7a6dd4d3d45a0",
+    "src/medre/adapters/chatmail/sample.py": "da4ecdce541691be5574d11c374045860c673eec0681b1ef646f9262e4c62a6e",
+    "src/medre/adapters/chatmail/session.py": "fa18e5c63aea51b5ce26e028211202be9b6c94aaa06efd322dc0855dbd434504",
+    "src/medre/adapters/chatmail/state.py": "9bdb72cede845722686c275b96b6e72152d352a9f0a587384b88d744326f5047"
+  },
+  "proof_sha256": "25c94be82cb3c460d7087ff9bbb8884893c80bc39fbc092c7e2c06e455bf9974"
+}

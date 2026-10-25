@@ -14,7 +14,7 @@ from medre.core.rendering.attribution import (
 from medre.core.rendering.relations import degrade_relations_inline
 from medre.core.rendering.renderer import RenderingContext, RenderingResult
 
-from .config import ChatmailConfig, plain_text
+from .config import ChatmailConfig, plain_text, sender_name
 
 
 class ChatmailRenderer:
@@ -87,11 +87,20 @@ class ChatmailRenderer:
             ctx.max_text_chars is not None and len(text) > ctx.max_text_chars
         ):
             raise ValueError("Rendered Chatmail text exceeds the destination budget")
+        payload: dict[str, Any] = {"text": text, "chat_id": destination}
+        if config.native_sender_attribution and attr.source_sender_label:
+            # Keep verification annotations already attached by the source
+            # projector. Never substitute an opaque transport ID for a name.
+            name = attr.source_sender_label
+            if attr.source_origin_label:
+                name += f" [{attr.source_origin_label}]"
+            if sender_name(name):
+                payload["override_sender_name"] = name
         return RenderingResult(
             event_id=event.event_id,
             target_adapter=ctx.target_adapter,
             target_channel=ctx.target_channel,
-            payload={"text": text, "chat_id": destination},
+            payload=payload,
             metadata={"chatmail": {"format": "plain", "attribution": "relay"}},
             fallback_applied="strategy_fallback_text" if fallback else None,
         )

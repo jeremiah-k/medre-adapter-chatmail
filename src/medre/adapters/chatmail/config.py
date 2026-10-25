@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 import re
+import unicodedata
 from collections.abc import Iterable
 from dataclasses import dataclass, replace
 from typing import Any, TypeGuard
@@ -39,6 +40,24 @@ def plain_text(value: object) -> TypeGuard[str]:
     return True
 
 
+def sender_name(value: object) -> TypeGuard[str]:
+    """Accept a bounded single-line display claim without rewriting its Unicode.
+
+    This is presentation text for Delta Chat's per-message sender override, not
+    an email address or a verified identity. Reject controls and line separators
+    so a name cannot inject additional header-like content.
+    """
+    return (
+        plain_text(value)
+        and bool(value.strip())
+        and len(value.encode("utf-8")) <= 1024
+        and not any(
+            unicodedata.category(char) == "Cc" or char in "\u2028\u2029"
+            for char in value
+        )
+    )
+
+
 @dataclass(frozen=True)
 class ChatmailConfig:
     adapter_id: str
@@ -54,6 +73,7 @@ class ChatmailConfig:
     max_pending: int = 100
     origin_label: str = ""
     relay_prefix: str = "[{origin_label}] {sender}: "
+    native_sender_attribution: bool = True
 
     def validate(self) -> ChatmailConfig:
         problem = adapter_id_problem(self.adapter_id)
@@ -94,6 +114,8 @@ class ChatmailConfig:
                 or value <= 0
             ):
                 raise ValueError(f"{name} must be a positive finite number")
+        if type(self.native_sender_attribution) is not bool:
+            raise ValueError("native_sender_attribution must be a boolean")
         for name in ("max_text_bytes", "max_pending"):
             value = getattr(self, name)
             if type(value) is not int or value <= 0:

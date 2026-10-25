@@ -85,8 +85,17 @@ class Journal:
                 self.connection.execute(
                     "CREATE TABLE IF NOT EXISTS pending ("
                     "identity TEXT PRIMARY KEY, provenance TEXT NOT NULL, chat INTEGER NOT NULL, "
-                    "body TEXT NOT NULL, status TEXT NOT NULL, native INTEGER)"
+                    "body TEXT NOT NULL, status TEXT NOT NULL, native INTEGER, "
+                    "sender_override TEXT)"
                 )
+                columns = {
+                    row["name"]
+                    for row in self.connection.execute("PRAGMA table_info(pending)")
+                }
+                if "sender_override" not in columns:
+                    self.connection.execute(
+                        "ALTER TABLE pending ADD COLUMN sender_override TEXT"
+                    )
                 # Never replay unsent work using an attempt recovered outside
                 # its dispatch lifetime. Native jobs with a correlated ID are
                 # polled rather than submitted again.
@@ -105,18 +114,24 @@ class Journal:
         return json.dumps([provenance.outbox_id, provenance.attempt_number])
 
     def enqueue(
-        self, provenance: DeliveryAttemptProvenance, chat: int, body: str, limit: int
+        self,
+        provenance: DeliveryAttemptProvenance,
+        chat: int,
+        body: str,
+        limit: int,
+        sender_override: str | None = None,
     ) -> None:
+        """Bind body and native sender presentation to an immutable attempt."""
         identity = self.identity(provenance)
         encoded = msgspec.json.encode(provenance).decode()
         with self.lock, self.connection:
             self.connection.execute("BEGIN IMMEDIATE")
             row = self.connection.execute(
-                "SELECT provenance, chat, body FROM pending WHERE identity=?",
+                "SELECT provenance, chat, body, sender_override FROM pending WHERE identity=?",
                 (identity,),
             ).fetchone()
             if row:
-                if tuple(row) != (encoded, chat, body):
+                if tuple(row) != (encoded, chat, body, sender_override):
                     raise ValueError(
                         "Chatmail attempt payload contradicts its queued identity"
                     )
@@ -127,8 +142,10 @@ class Journal:
             ):
                 raise PendingLimitError("Chatmail durable queue is full")
             self.connection.execute(
-                "INSERT INTO pending VALUES (?, ?, ?, ?, 'queued', NULL)",
-                (identity, encoded, chat, body),
+                "INSERT INTO pending "
+                "(identity, provenance, chat, body, status, native, sender_override) "
+                "VALUES (?, ?, ?, ?, 'queued', NULL, ?)",
+                (identity, encoded, chat, body, sender_override),
             )
 
     def rows(self) -> list[dict[str, Any]]:

@@ -11,7 +11,7 @@ from typing import Any
 from medre.core.events.canonical import CanonicalEvent, EventRelation, NativeRef
 from medre.core.events.metadata import EventMetadata, NativeMetadata, TransportMetadata
 
-from .config import ChatmailConfig, plain_text
+from .config import ChatmailConfig, plain_text, sender_name
 
 
 def native_id(profile: str, message_id: int) -> str:
@@ -81,6 +81,10 @@ class ChatmailCodec:
         label = sender.get("displayName")
         if not plain_text(label) or not label.strip() or not label.isprintable():
             label = f"contact {sender_id}"
+        presentation = snapshot.get("overrideSenderName")
+        claimed_sender = (
+            {"sender_override": presentation} if sender_name(presentation) else {}
+        )
         return CanonicalEvent(
             event_id="chatmail:" + hashlib.sha256(identity.encode()).hexdigest(),
             event_kind="message.created",
@@ -106,6 +110,7 @@ class ChatmailCodec:
                             "message_id": message_id,
                             "contact_id": sender_id,
                             "sender_label": label,
+                            **claimed_sender,
                             "encrypted_and_signed": snapshot.get("showPadlock") is True,
                         }
                     }

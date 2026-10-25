@@ -12,7 +12,10 @@
       "type": "boolean"
     },
     "adapter_kind": {
-      "enum": ["real", "fake"]
+      "enum": [
+        "real",
+        "fake"
+      ]
     },
     "accounts_dir": {
       "type": "string"
@@ -62,6 +65,11 @@
     },
     "relay_prefix": {
       "type": "string"
+    },
+    "native_sender_attribution": {
+      "type": "boolean",
+      "default": true,
+      "description": "Present original sender and origin using a per-message native sender override."
     }
   },
   "required": [],

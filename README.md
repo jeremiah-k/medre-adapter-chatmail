@@ -111,3 +111,9 @@ The [live test](tests/test_live.py) accepts an explicitly prepared relay/profile
 fixture. See [live testing](docs/live-testing.md). All service fixtures use
 ordinary container permissions; no host system configuration is required by this
 provider's tests.
+
+Per-message native sender attribution is enabled by default. Delta Chat recipients
+see the original sender and origin as a message display name while the bridge
+account and contact profile remain unchanged. Set `native_sender_attribution: false`
+to keep only the configured body prefix. See [the provider contract](docs/spec/chatmail.md#per-message-native-attribution)
+and [the two-receipt native qualification](docs/evidence/native-sender-2026-10-25.json).

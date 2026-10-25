@@ -153,7 +153,11 @@ async def test_renderer_preserves_text_and_refuses_unknown_kinds_and_budgets(con
         delivery_strategy="direct",
     )
     result = await renderer.render(event, ctx)
-    assert result.payload == {"text": event.payload["body"], "chat_id": 10}
+    assert result.payload == {
+        "text": event.payload["body"],
+        "chat_id": 10,
+        "override_sender_name": "Alice",
+    }
     with pytest.raises(ValueError, match="budget"):
         await renderer.render(event, replace(ctx, max_text_bytes=1))
     with pytest.raises(ValueError, match="configured"):

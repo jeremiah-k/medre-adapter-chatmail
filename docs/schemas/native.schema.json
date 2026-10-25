@@ -31,6 +31,11 @@
     },
     "encrypted_and_signed": {
       "type": "boolean"
+    },
+    "sender_override": {
+      "type": "string",
+      "maxLength": 1024,
+      "description": "Untrusted native per-message display claim; does not replace contact identity."
     }
   },
   "required": [
