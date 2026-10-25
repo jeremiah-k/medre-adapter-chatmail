@@ -244,8 +244,30 @@ async def test_renderer_preserves_shared_text_selection(config, payload, expecte
     event = ChatmailCodec(config, "profile").decode(snapshot(), timestamp=NOW)
     event = msgspec.structs.replace(event, payload=payload)
     ctx = RenderingContext(
-        target_adapter="mail", target_channel="10",
-        target_platform="chatmail", delivery_strategy="direct",
+        target_adapter="mail",
+        target_channel="10",
+        target_platform="chatmail",
+        delivery_strategy="direct",
     )
     result = await ChatmailRenderer({"mail": config}).render(event, ctx)
     assert result.payload["text"] == expected
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"body": "valid body", "text": 42},
+        {"body": 42, "text": "legacy"},
+        {"body": None, "text": "legacy", "formatting": {"version": 1, "spans": []}},
+    ],
+)
+async def test_malformed_canonical_text_never_becomes_native_content(config, payload):
+    """Reject invalid selected text before prefixing or native sender attribution."""
+    import msgspec
+
+    event = ChatmailCodec(config, "profile").decode(snapshot(), timestamp=NOW)
+    event = msgspec.structs.replace(event, payload=payload)
+    with pytest.raises(ValueError, match="must be text"):
+        await ChatmailRenderer({"mail": config}).render(
+            event, RenderingContext("direct", "mail", "10", "chatmail")
+        )
