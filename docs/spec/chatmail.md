@@ -125,3 +125,23 @@ sender identity, encryption, relation binding, or delivery authority.
 This carrier conveys native sender/origin presentation, not the complete shared
 bridge-context object or canonical event references. SMTP acceptance still yields
 only `remote_service` confirmation; no recipient delivery or reading is implied.
+
+## Native health notifications
+
+The provider MUST use the same retained native state for health probes and the
+optional `AdapterContext.report_health` sink. Reports MUST describe settled
+`healthy`, `degraded` or `failed` observations for the bound adapter. Startup and
+stop MUST delimit the reporting lifetime; retired callbacks MUST NOT publish
+for a replacement. Observer exceptions MUST NOT interrupt native operations,
+release ownership, create receipts or authorize another send. Contexts without
+the sink retain explicit-probe compatibility.
+
+The existing selected-account connectivity observation MUST govern health:
+a native connectivity value of at least 3000 is healthy; lower connectivity is
+degraded. Native worker failure, recovery and permanent account/setup failures
+MUST update retained health. Account connectivity does not replace SMTP,
+recipient delivery or read evidence. No extra connectivity poller is introduced.
+
+Account readiness MUST NOT be reported before a native connectivity observation.
+Prepared startup MAY remain `starting` until the owner performs that observation;
+abnormal owner failure MUST remain reportable without fabricating connectivity.
