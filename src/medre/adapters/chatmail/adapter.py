@@ -111,6 +111,9 @@ class ChatmailAdapter(AdapterContract):
         )
         self._task: asyncio.Task[None] | None = None
         self._state = "unknown"
+        self._health_epoch = 0
+        self._health_active = False
+        self._reported_health: str | None = None
         self._profile = ""
         self._cursors: dict[int, int] = {}
         self._recovery_heads: dict[int, int] = {}
@@ -144,21 +147,31 @@ class ChatmailAdapter(AdapterContract):
             )
         if ctx.adapter_id != self.adapter_id:
             raise AdapterPermanentError("Chatmail context adapter identity differs")
+        self._health_epoch += 1
+        health_epoch = self._health_epoch
+        self._health_active = False
+        self._reported_health = None
         self.ctx = ctx
         self._mark_started(ctx)
         self._stopping = False
-        self._state = "starting"
+        self._set_state("starting")
         try:
             await self._connect()
             self.journal = await asyncio.to_thread(
                 _open_journal, self.config.state_dir, self._profile
             )
+            self._health_active = True
+            # Keep failure reporting available, but wait for native connectivity
+            # before publishing an account-readiness observation.
             self._task = asyncio.create_task(
                 self._run(), name=f"chatmail:{self.adapter_id}"
             )
+            self._task.add_done_callback(
+                lambda task: self._native_task_done(task, health_epoch)
+            )
         except BaseException:
             await self.stop()
-            self._state = "failed"
+            self._set_state("failed")
             raise
 
     async def _connect(self) -> None:
@@ -511,6 +524,7 @@ class ChatmailAdapter(AdapterContract):
             await asyncio.to_thread(journal.remove, row["identity"])
 
     async def _run(self) -> None:
+        epoch = self._health_epoch
         while not self._stopping:
             session = self.session
             if session is None:
@@ -533,7 +547,9 @@ class ChatmailAdapter(AdapterContract):
                 connectivity = await session.call(
                     "get_connectivity", self.config.account_id
                 )
-                self._state = "healthy" if connectivity >= 3000 else "degraded"
+                self._set_state(
+                    "healthy" if connectivity >= 3000 else "degraded", epoch=epoch
+                )
                 try:
                     await asyncio.wait_for(
                         session.wake.wait(), self.config.poll_interval_seconds
@@ -541,26 +557,28 @@ class ChatmailAdapter(AdapterContract):
                 except TimeoutError:  # nosec B110 - periodic scan fallback
                     pass
             except asyncio.CancelledError:
+                if self._health_active:
+                    self._set_state("failed", epoch=epoch)
                 raise
             except AdapterPermanentError:
-                self._state = "failed"
+                self._set_state("failed", epoch=epoch)
                 return
             except SessionError:
-                self._state = "degraded"
+                self._set_state("degraded", epoch=epoch)
                 try:
                     await session.stop()
                 except Exception:
-                    self._state = "failed"
+                    self._set_state("failed", epoch=epoch)
                     return
                 await asyncio.sleep(self.config.reconnect_delay_seconds)
                 try:
                     await self._connect()
                     self._reconnects += 1
                 except AdapterPermanentError:
-                    self._state = "failed"
+                    self._set_state("failed", epoch=epoch)
                     return
                 except Exception:
-                    self._state = "degraded"
+                    self._set_state("degraded", epoch=epoch)
                     # A reconnect may fail after stop_io or some cursors have
                     # been loaded. The next attempt must start a fresh session.
                     session = self.session
@@ -569,17 +587,20 @@ class ChatmailAdapter(AdapterContract):
                     try:
                         await session.stop()
                     except Exception:
-                        self._state = "failed"
+                        self._set_state("failed", epoch=epoch)
                         return
             except Exception:
                 # Storage/admission/feedback remains owned by its durable
                 # source. Retry without discarding native or queued work.
-                self._state = "degraded"
+                self._set_state("degraded", epoch=epoch)
                 await asyncio.sleep(self.config.poll_interval_seconds)
 
     async def stop(self, timeout: float = 5.0) -> None:
+        self._health_active = False
+        self._health_epoch += 1
+        self._reported_health = None
         self._stopping = True
-        self._state = "stopping"
+        self._set_state("stopping")
         if self._task is not None:
             task, self._task = self._task, None
             task.cancel()
@@ -590,7 +611,7 @@ class ChatmailAdapter(AdapterContract):
         if self.journal is not None:
             journal, self.journal = self.journal, None
             await asyncio.to_thread(journal.close)
-        self._state = "unknown"
+        self._set_state("unknown")
 
     def diagnostics(self) -> dict[str, Any]:
         return {
@@ -601,7 +622,41 @@ class ChatmailAdapter(AdapterContract):
             "configured_chats": len(self.config.chats),
         }
 
+    def _native_task_done(self, task: asyncio.Task[None], epoch: int) -> None:
+        """Observe unexpected native-owner exit, including cancellation before first execution."""
+        if not self._health_active or epoch != self._health_epoch:
+            return
+        if task.cancelled() or task.exception() is not None:
+            self._set_state("failed", epoch=epoch)
+
+    def _set_state(self, state: str, *, epoch: int | None = None) -> None:
+        """Publish existing native-owner observations without adding polling or send authority."""
+        if epoch is not None and epoch != self._health_epoch:
+            return
+        self._state = state
+        if (
+            not self._health_active
+            or self.ctx is None
+            or state not in {"healthy", "degraded", "failed"}
+        ):
+            return
+        report = getattr(self.ctx, "report_health", None)
+        if report is None or self._reported_health == state:
+            return
+        try:
+            report(self._health_info())
+            self._reported_health = state
+        except Exception as exc:
+            self.ctx.logger.warning(
+                "chatmail health notification failed (%s)", type(exc).__name__
+            )
+
     async def health_check(self) -> AdapterInfo:
+        """Read the native owner's retained local health without another native call."""
+        return self._health_info()
+
+    def _health_info(self) -> AdapterInfo:
+        """Use the same native-owner state for explicit probes and reports."""
         return AdapterInfo(
             self.adapter_id,
             self.platform,
