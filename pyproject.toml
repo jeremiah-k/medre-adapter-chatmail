@@ -8,8 +8,8 @@ license = "MIT"
 classifiers = ["Typing :: Typed"]
 dependencies = [
   "medre>=0.1.0,<0.2.0",
-  "deltachat-rpc-client==2.63.0",
-  "deltachat-rpc-server==2.63.0",
+  "deltachat-rpc-client==2.65.0",
+  "deltachat-rpc-server==2.65.0",
 ]
 
 [project.scripts]
