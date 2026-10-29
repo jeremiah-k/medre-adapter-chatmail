@@ -24,45 +24,11 @@ class UsageError(ValueError):
 
 
 def parser() -> argparse.ArgumentParser:
-    result = argparse.ArgumentParser(
-        prog="medre-chatmail",
-        description="Provision Chatmail profiles and discover MEDRE conversation IDs.",
-    )
-    commands = result.add_subparsers(dest="command", required=True)
-    for name, help_text in (
-        ("init", "Create or configure a private Chatmail profile"),
-        ("accounts", "List local account IDs without exposing credentials"),
-        ("chats", "List chat IDs and names for route configuration"),
-        ("join", "Accept a contact or group invitation"),
-    ):
-        command = commands.add_parser(name, help=help_text)
-        command.add_argument(
-            "--adapter",
-            default="chatmail",
-            help="MEDRE adapter instance ID (default: chatmail)",
-        )
-        command.add_argument(
-            "--config", help="Read profile settings from this MEDRE configuration"
-        )
-        command.add_argument(
-            "--accounts-dir", help="Override the private profile directory"
-        )
-        command.add_argument(
-            "--account-id", type=int, help="Select an explicit native account ID"
-        )
-        command.add_argument(
-            "--json", action="store_true", help="Print machine-readable results"
-        )
-        if name in {"init", "join"}:
-            command.add_argument(
-                "--qr-stdin",
-                action="store_true",
-                help="Read the private QR payload from standard input",
-            )
-        if name == "chats":
-            command.add_argument(
-                "--groups", action="store_true", help="Show group conversations only"
-            )
+    """Build the standalone parser from the same argument definitions as MEDRE."""
+    from .cli_contrib import configure_parser
+
+    result = argparse.ArgumentParser(prog="medre-chatmail")
+    configure_parser(result, command_dest="command")
     return result
 
 
@@ -173,7 +139,7 @@ async def execute(
             accounts = [created]
         if account not in accounts:
             raise UsageError(
-                "The selected account does not exist; inspect medre-chatmail accounts"
+                "The selected account does not exist; inspect medre adapter chatmail accounts"
             )
         if options.command == "init":
             if not await session.call("is_configured", account):
@@ -193,7 +159,9 @@ async def execute(
                 "configured": await session.call("is_configured", account),
             }
         if not await session.call("is_configured", account):
-            raise UsageError("The account is unconfigured; run medre-chatmail init")
+            raise UsageError(
+                "The account is unconfigured; run medre adapter chatmail init"
+            )
         if options.command == "join":
             await session.call("start_io", account)
             conversation = await session.call("secure_join", account, qr)
@@ -208,7 +176,7 @@ async def execute(
             except TimeoutError:
                 raise UsageError(
                     f"Chatmail join is pending for chat {conversation}; "
-                    "check medre-chatmail chats before retrying"
+                    "check medre adapter chatmail chats before retrying"
                 ) from None
             return {"chat_id": conversation, "can_send": True}
         entries = await session.call("get_chatlist_entries", account, None, None, None)
@@ -242,7 +210,12 @@ def _display(value: object) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
-    options = parser().parse_args(argv)
+    """Run the standalone provider entry point."""
+    return run(parser().parse_args(argv))
+
+
+def run(options: argparse.Namespace) -> int:
+    """Execute parsed commands with the provider's shared cleanup and error policy."""
     try:
         result = asyncio.run(execute(options, selected_config(options)))
     except KeyboardInterrupt:
@@ -275,6 +248,6 @@ def main(argv: list[str] | None = None) -> int:
         )
         if options.command == "init":
             print(
-                "Discover conversation IDs with medre-chatmail chats using the same profile options."
+                "Discover conversation IDs with medre adapter chatmail chats using the same profile options."
             )
     return 0

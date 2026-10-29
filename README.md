@@ -20,13 +20,19 @@ Both RPC packages are installed together; no Rust build or separate daemon
 installation is needed. Use immutable Git revisions for reproducible deployments.
 `uv run --locked` preserves the project lock when starting commands.
 
+For a persistent MEDRE tool installation, `medre adapters install chatmail`
+adds the provider to the same environment. Provision through `medre adapter
+chatmail`; a separately exposed helper executable is unnecessary. The
+standalone `medre-chatmail` entry point remains available in activated project
+environments and uses the same arguments and execution path.
+
 ## Set up a profile
 
 ```bash
-uv run --locked medre-chatmail init --adapter mail
-uv run --locked medre-chatmail accounts --adapter mail
-uv run --locked medre-chatmail join --adapter mail
-uv run --locked medre-chatmail chats --adapter mail --groups --json
+uv run --locked medre adapter chatmail init --adapter mail
+uv run --locked medre adapter chatmail accounts --adapter mail
+uv run --locked medre adapter chatmail join --adapter mail
+uv run --locked medre adapter chatmail chats --adapter mail --groups --json
 ```
 
 `init` asks for a relay's private DCACCOUNT or DCLOGIN QR payload using hidden
