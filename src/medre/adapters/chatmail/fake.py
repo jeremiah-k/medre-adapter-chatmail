@@ -3,6 +3,8 @@
 from datetime import datetime, timezone
 from uuid import uuid4
 
+from medre.core.supervision.diagnostic_contract import COMMON_DIAGNOSTIC_KEYS
+
 from medre.core.contracts.adapter import (
     AdapterContext,
     AdapterHandoffResult,
@@ -59,7 +61,11 @@ class FakeChatmailAdapter(ChatmailAdapter):
         )
 
     def diagnostics(self) -> dict[str, object]:
+        """Expose retained health and explicit unknowns without native I/O."""
         return {
+            **dict.fromkeys(sorted(COMMON_DIAGNOSTIC_KEYS)),
+            "health": "healthy" if self._started else "unknown",
+            "mode": "fake",
             "fake": True,
             "started": self._started,
             "delivered": len(self.delivered_payloads),

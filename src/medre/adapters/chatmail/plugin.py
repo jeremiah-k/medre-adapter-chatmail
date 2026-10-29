@@ -33,6 +33,8 @@ def adapter_spec() -> AdapterSpec:
         stopped_state_declaration=SymbolRef(
             "medre.adapters.chatmail.stopped_declaration", "declaration"
         ),
+        cli_register=SymbolRef("medre.adapters.chatmail.cli_contrib", "register_cli"),
+        cli_dispatch=SymbolRef("medre.adapters.chatmail.cli_contrib", "dispatch_cli"),
         support_endpoint_fields=("account_id", "chats"),
         support_secret_fields=("accounts_dir", "state_dir"),
     )

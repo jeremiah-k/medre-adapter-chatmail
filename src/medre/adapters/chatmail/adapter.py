@@ -10,6 +10,8 @@ from pathlib import Path
 from typing import Any
 from time import monotonic
 
+from medre.core.supervision.diagnostic_contract import COMMON_DIAGNOSTIC_KEYS
+
 from medre.core.contracts.adapter import (
     AdapterCapabilities,
     AdapterContext,
@@ -614,7 +616,11 @@ class ChatmailAdapter(AdapterContract):
         self._set_state("unknown")
 
     def diagnostics(self) -> dict[str, Any]:
+        """Expose retained health and explicit unknowns without native I/O."""
         return {
+            **dict.fromkeys(sorted(COMMON_DIAGNOSTIC_KEYS)),
+            "health": self._state,
+            "mode": "live",
             "state": self._state,
             "failed_ingress": self._failed_ingress,
             "reconnects": self._reconnects,

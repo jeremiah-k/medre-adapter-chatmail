@@ -148,27 +148,47 @@ abnormal owner failure MUST remain reportable without fabricating connectivity.
 
 ## Stopped-state declaration
 
-The adapter MUST keep configuration-only ``coverage`` pure and SDK-free;
-this preview MUST return ``unsupported`` rather than guessing an account
+The adapter MUST keep configuration-only `coverage` pure and SDK-free;
+this preview MUST return `unsupported` rather than guessing an account
 path. Under a retained existing MEDRE profile SQLite lease **and** native
-``accounts.lock`` flock, ``resolve_coverage`` MAY read a bounded, validated
-``accounts.toml`` and derive the configured ``account_id`` mapping through
-``AccountConfig.dir``. The database MUST be ``dc.db`` inside that UUID
-account directory, never ``<account_id>/db.sqlite``.
+`accounts.lock` flock, `resolve_coverage` MAY read a bounded, validated
+`accounts.toml` and derive the configured `account_id` mapping through
+`AccountConfig.dir`. The database MUST be `dc.db` inside that UUID
+account directory, never `<account_id>/db.sqlite`.
 
-Automatic ``capture-config`` selection MUST refuse missing/ambiguous IDs,
+Automatic `capture-config` selection MUST refuse missing/ambiguous IDs,
 multiple accounts, malformed registry, traversal, symlinked/hard-linked files,
-unsafe opaque input, unexpected native files, nonempty ``dc.db-blobs``, or unsupported SQLite
+unsafe opaque input, unexpected native files, nonempty `dc.db-blobs`, or unsupported SQLite
 state. It MUST select the exact registry, native database as SQLite backup
-(including committed WAL), and ``chatmail-pending.sqlite`` journal containing
-accepted/uncertain send fences. The native ``accounts.lock`` and MEDRE SQLite
+(including committed WAL), and `chatmail-pending.sqlite` journal containing
+accepted/uncertain send fences. The native `accounts.lock` and MEDRE SQLite
 lease are excluded from captured bytes: neither file grants ownership after
 restore. The empty blob directory MAY be reconstructed by native startup.
 
 Both locks MUST be retained from resolution through capture and publication,
 with reverse-order cleanup on failure. Native account-manager exclusion uses
-the released Delta Chat core's ``fd_lock`` semantics on supported Unix hosts;
+the released Delta Chat core's `fd_lock` semantics on supported Unix hosts;
 no file is created/truncated merely to acquire a lock. A running pinned native account manager MUST block acquisition of its
 accounts.lock. Non-cooperating processes and other hosts remain outside the
 machine-local exclusion claim. A blob-bearing or multi-account
 profile requires a separately qualified coherent native export.
+
+## Operator command namespace
+
+The provider MUST contribute its profile commands under `medre adapter chatmail`
+through MEDRE's isolated CLI registration and dispatch hooks. Generic help MUST
+remain SDK-free and MUST NOT open a native profile. The standalone
+`medre-chatmail` entry point MUST use the same parser definitions and execution
+policy. Both paths MUST retain exit status, hidden secret input, profile locks,
+native cleanup, and configuration/environment selection. Provisioning remains
+an explicit operator action; runtime startup MUST NOT create an identity.
+
+## Common diagnostic projection
+
+Native and SDK-free adapters MUST expose the core common diagnostic keys.
+`health` MUST match the same retained observation returned by `health_check`;
+`mode` MUST distinguish `live` from `fake`. Legacy provider-specific keys MUST
+remain available. Unobserved connection state, uncounted delivery failures,
+and unavailable reconnect/error details MUST remain `None`, rather than
+fabricated success, zero counts or inferred remote reachability. Cumulative
+`reconnects` MUST NOT be relabeled as consecutive `reconnect_attempts`.
