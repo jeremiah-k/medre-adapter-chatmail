@@ -393,6 +393,7 @@ class ChatmailAdapter(AdapterContract):
             await asyncio.sleep(0)
 
     async def deliver(self, result: RenderingResult) -> AdapterHandoffResult:
+        """Admit one validated attempt, reply target included, to the journal."""
         conversation, text, override, reply_ref, reply_fallback = validate_payload(
             result, self.config
         )
@@ -460,6 +461,12 @@ class ChatmailAdapter(AdapterContract):
         return number if 10 <= number <= 4_294_967_295 else None
 
     async def _flush(self) -> None:
+        """Submit journaled attempts under the uncertainty fence.
+
+        Each queued reply re-verifies its native quote target against the
+        active profile and exact chat before the persisted ``submitting``
+        marker; an unusable target sends the retained readable fallback.
+        """
         session = self.session
         journal = self.journal
         ctx = self.ctx

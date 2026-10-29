@@ -67,6 +67,7 @@ class Journal:
     """Retain exact attempts until their feedback sink acknowledges them."""
 
     def __init__(self, state_dir: str, scope: str) -> None:
+        """Open the per-profile journal, adding nullable reply columns in place."""
         self.connection = private_database(Path(state_dir) / "chatmail-pending.sqlite")
         self.connection.row_factory = sqlite3.Row
         self.lock = threading.RLock()
