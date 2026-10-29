@@ -117,7 +117,9 @@ The run summary records both resolved commit IDs. SDK constraints are exported
 from core's lock without installing private core test helpers into this provider.
 
 The [live test](tests/test_live.py) accepts an explicitly prepared relay/profile
-fixture. See [live testing](docs/live-testing.md). All service fixtures use
+fixture. Native quote presentation requires that independent-peer campaign on
+the candidate revision before merging or releasing native reply support; API-shape
+tests alone do not qualify it. See [live testing](docs/live-testing.md). All service fixtures use
 ordinary container permissions; no host system configuration is required by this
 provider's tests.
 

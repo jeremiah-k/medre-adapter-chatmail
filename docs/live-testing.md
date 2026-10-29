@@ -41,3 +41,17 @@ The same test kills the actual RPC server and verifies reconnect with a fresh
 process. It also receives a group message into native storage while MEDRE is
 stopped, then checks recovered admission from the saved core checkpoint. All
 native processes and profile leases are released during teardown.
+
+## Native reply qualification
+
+The same two-profile test sends an attributed native reply after reconnect and
+restart. The peer's own snapshot must retain the original peer-side message ID
+and chat ID in its quote, the exact sender/origin body prefix, and the native
+sender override. SMTP feedback alone does not qualify native quote presentation.
+
+The SDK quote API test checks the pinned client's draft shape without delivering
+a message. Passing it or the deterministic journal tests does not replace the
+independent-peer test. Native reply promotion must not merge or release until
+the live campaign passes on the candidate revision pair. Record those revisions,
+the pinned SDK versions and the peer result with qualification evidence; exclude
+credentials and private profile paths.

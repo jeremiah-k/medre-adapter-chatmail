@@ -159,13 +159,23 @@ async def test_native_group_ingress_and_deferred_smtp_handoff(tmp_path):
             attempt_number=1,
             source="live",
         )
-        reply = nonce + " reply"
+        reply = "[Quote qualification] Alice & 🦉: " + nonce + " reply"
+        sender_override = "Alice & 🦉 [Quote qualification]"
         handoff = await bot.deliver(
             RenderingResult(
                 nonce,
                 "mail",
                 str(bot_chat),
-                {"text": reply, "chat_id": bot_chat},
+                {
+                    "text": reply,
+                    "chat_id": bot_chat,
+                    "override_sender_name": sender_override,
+                    # The accepted inbound native ref survives core checkpoint
+                    # and native profile restart; it must not be rebound to a
+                    # different chat or local profile on outbound submission.
+                    "reply_native_ref": event.source_native_ref.native_message_id,
+                    "reply_fallback_text": reply + " [reply to: " + nonce + "]",
+                },
                 attempt_provenance=provenance,
             )
         )
@@ -185,6 +195,11 @@ async def test_native_group_ingress_and_deferred_smtp_handoff(tmp_path):
                         "get_message", peer_config.account_id, message_id
                     )
                     if snapshot["fromId"] != 1 and snapshot["text"] == reply:
+                        assert snapshot.get("overrideSenderName") == sender_override
+                        quote = snapshot.get("quote", {})
+                        assert quote.get("kind") == "WithMessage"
+                        assert quote.get("messageId") == original_id
+                        assert quote.get("chatId") == peer_chat
                         found = True
                         break
                 if not found:
