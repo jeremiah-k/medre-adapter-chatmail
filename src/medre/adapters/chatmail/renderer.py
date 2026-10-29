@@ -87,6 +87,43 @@ class ChatmailRenderer:
         ):
             raise ValueError("Rendered Chatmail text exceeds the destination budget")
         payload: dict[str, Any] = {"text": text, "chat_id": destination}
+        # Core binds stored references to this exact destination. A relation's
+        # own native ref cannot override an ambiguous or unavailable binding.
+        # The active profile and native chat are checked again before sending.
+        replies = [rel for rel in event.relations if rel.relation_type == "reply"]
+        reply_fallback_applied = False
+        if replies and not fallback:
+            fallback_body = prefix.rendered_prefix + degrade_relations_inline(
+                event, select_message_body(event.payload)
+            )
+            # Both outcomes must fit before durable admission. Never truncate
+            # the attribution or reply prefix when a target disappears later.
+            if (
+                not plain_text(fallback_body)
+                or len(fallback_body.encode("utf-8")) > min(limits)
+                or (
+                    ctx.max_text_chars is not None
+                    and len(fallback_body) > ctx.max_text_chars
+                )
+            ):
+                raise ValueError(
+                    "Chatmail reply fallback exceeds the destination budget"
+                )
+            fact = replies[0].target_fact if len(replies) == 1 else None
+            if (
+                fact is not None
+                and fact.status == "bound"
+                and fact.adapter == ctx.target_adapter
+                and fact.native_channel_id == ctx.target_channel
+                and plain_text(fact.native_message_id)
+                and fact.native_message_id
+                and replies[0].target_event_id
+            ):
+                payload["reply_native_ref"] = fact.native_message_id
+                payload["reply_fallback_text"] = fallback_body
+            else:
+                payload["text"] = fallback_body
+                reply_fallback_applied = True
         if config.native_sender_attribution and attr.source_sender_label:
             # Keep verification annotations already attached by the source
             # projector. Never substitute an opaque transport ID for a name.
@@ -101,7 +138,11 @@ class ChatmailRenderer:
             target_channel=ctx.target_channel,
             payload=payload,
             metadata={"chatmail": {"format": "plain", "attribution": "relay"}},
-            fallback_applied="strategy_fallback_text" if fallback else None,
+            fallback_applied=(
+                "strategy_fallback_text"
+                if fallback
+                else "relation_reply" if reply_fallback_applied else None
+            ),
         )
 
 

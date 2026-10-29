@@ -86,7 +86,7 @@ class Journal:
                     "CREATE TABLE IF NOT EXISTS pending ("
                     "identity TEXT PRIMARY KEY, provenance TEXT NOT NULL, chat INTEGER NOT NULL, "
                     "body TEXT NOT NULL, status TEXT NOT NULL, native INTEGER, "
-                    "sender_override TEXT)"
+                    "sender_override TEXT, reply_ref TEXT, fallback_body TEXT)"
                 )
                 columns = {
                     row["name"]
@@ -95,6 +95,17 @@ class Journal:
                 if "sender_override" not in columns:
                     self.connection.execute(
                         "ALTER TABLE pending ADD COLUMN sender_override TEXT"
+                    )
+                # Additive nullable fields preserve existing native IDs and
+                # accepted/uncertain feedback across a prerelease upgrade.
+                # No old row is retroactively assigned a quote target.
+                if "reply_ref" not in columns:
+                    self.connection.execute(
+                        "ALTER TABLE pending ADD COLUMN reply_ref TEXT"
+                    )
+                if "fallback_body" not in columns:
+                    self.connection.execute(
+                        "ALTER TABLE pending ADD COLUMN fallback_body TEXT"
                     )
                 # Never replay unsent work using an attempt recovered outside
                 # its dispatch lifetime. Native jobs with a correlated ID are
@@ -120,18 +131,28 @@ class Journal:
         body: str,
         limit: int,
         sender_override: str | None = None,
+        reply_ref: str | None = None,
+        fallback_body: str | None = None,
     ) -> None:
-        """Bind body and native sender presentation to an immutable attempt."""
+        """Bind body, native reply target and attribution to one immutable attempt."""
         identity = self.identity(provenance)
         encoded = msgspec.json.encode(provenance).decode()
         with self.lock, self.connection:
             self.connection.execute("BEGIN IMMEDIATE")
             row = self.connection.execute(
-                "SELECT provenance, chat, body, sender_override FROM pending WHERE identity=?",
+                "SELECT provenance, chat, body, sender_override, reply_ref, fallback_body "
+                "FROM pending WHERE identity=?",
                 (identity,),
             ).fetchone()
             if row:
-                if tuple(row) != (encoded, chat, body, sender_override):
+                if tuple(row) != (
+                    encoded,
+                    chat,
+                    body,
+                    sender_override,
+                    reply_ref,
+                    fallback_body,
+                ):
                     raise ValueError(
                         "Chatmail attempt payload contradicts its queued identity"
                     )
@@ -143,9 +164,18 @@ class Journal:
                 raise PendingLimitError("Chatmail durable queue is full")
             self.connection.execute(
                 "INSERT INTO pending "
-                "(identity, provenance, chat, body, status, native, sender_override) "
-                "VALUES (?, ?, ?, ?, 'queued', NULL, ?)",
-                (identity, encoded, chat, body, sender_override),
+                "(identity, provenance, chat, body, status, native, sender_override, "
+                "reply_ref, fallback_body) "
+                "VALUES (?, ?, ?, ?, 'queued', NULL, ?, ?, ?)",
+                (
+                    identity,
+                    encoded,
+                    chat,
+                    body,
+                    sender_override,
+                    reply_ref,
+                    fallback_body,
+                ),
             )
 
     def rows(self) -> list[dict[str, Any]]:
