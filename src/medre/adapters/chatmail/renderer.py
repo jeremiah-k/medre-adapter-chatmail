@@ -30,6 +30,7 @@ class ChatmailRenderer:
         self.source_attribution = dict(source_attribution or {})
 
     def can_render(self, event: CanonicalEvent, ctx: RenderingContext) -> bool:
+        """Accept text events and any relation-bearing fallback request."""
         return (
             ctx.target_platform == "chatmail"
             and ctx.target_adapter in self.configs
@@ -43,6 +44,12 @@ class ChatmailRenderer:
     async def render(
         self, event: CanonicalEvent, ctx: RenderingContext
     ) -> RenderingResult:
+        """Render attributed text, selecting a scoped native quote when bound.
+
+        A reply relation with a destination-scoped bound fact contributes the
+        native reference plus a budget-checked readable fallback; anything
+        less keeps the reply inline in the message text.
+        """
         if not self.can_render(event, ctx):
             raise ValueError("Unsupported Chatmail rendering target or strategy")
         config = self.configs[ctx.target_adapter]

@@ -1,0 +1,40 @@
+{
+  "core_revision": "cf6d18629f8ac53a3e4f40533e3ac9c3101de914",
+  "provider_revision": "9954f936d5ef9a03889d01402b098e1b58137aec",
+  "sdk_client": "2.65.0",
+  "sdk_server": "2.65.0",
+  "relay_image": "sha256:6a56ce61d89d96ac5b11a202a708064eb9f107f9d729f0710a0686556b84be48",
+  "exit_status": 0,
+  "peer_receipts": [
+    {
+      "id": 26,
+      "chatId": 13,
+      "fromId": 10,
+      "text": "[Reply qualification] MEDRE Peer: MEDRE Chatmail bdc908a667f146bba3dab53ee1b0a759 reply",
+      "quote": {
+        "authorDisplayColor": "#9713b2",
+        "authorDisplayName": "Me",
+        "chatId": 13,
+        "image": null,
+        "isForwarded": false,
+        "kind": "WithMessage",
+        "messageId": 22,
+        "overrideSenderName": null,
+        "text": "MEDRE Chatmail bdc908a667f146bba3dab53ee1b0a759",
+        "viewType": "Text"
+      },
+      "overrideSenderName": "MEDRE Peer [Reply qualification]",
+      "state": 10,
+      "downloadState": "Done",
+      "showPadlock": true
+    }
+  ],
+  "qualification": "independent encrypted-group native quote, explicit sender/origin presentation, reconnect, restart recovery and SMTP handoff",
+  "limits": "Local GreenMail SMTP/IMAP fixture; not official Chatmail Docker deployment or sustained-load qualification.",
+  "source_sha256": {
+    "src/medre/adapters/chatmail/adapter.py": "baf94b6701d045c3a93677ff11f634505e3d4259bdc9108aeb781447f0cd8c2f",
+    "src/medre/adapters/chatmail/renderer.py": "767dc0b7274ef3ef97523cb29f29ec0d63baf57ccecec6b305c76c405f9b98a7",
+    "src/medre/adapters/chatmail/state.py": "f0b1ef883d444e9030aa747412c903044d96cedd6327f8e7656c087b3124defa",
+    "tests/test_live.py": "3efd09c1309daff5c0d52b5e25499ba7709dedfd401ae7b8cb29a0c98cf2fc21"
+  }
+}

@@ -10,20 +10,32 @@ from uuid import uuid4
 
 import pytest
 
+import msgspec
+from dataclasses import replace
+
 from conftest import wait_until
 
 from medre.core.contracts.adapter import AdapterContext
 from medre.core.contracts.delivery import DeferredHandoffCompleted
+from medre.core.events.canonical import EventRelation, RelationTargetFact
 from medre.core.events.delivery import DeliveryAttemptProvenance
-from medre.core.rendering.renderer import RenderingResult
+from medre.core.rendering.renderer import RenderingContext
 from medre.adapters.chatmail.adapter import ChatmailAdapter
 from medre.adapters.chatmail.config import ChatmailConfig
+from medre.adapters.chatmail.renderer import ChatmailRenderer
 from medre.adapters.chatmail.session import ChatmailSession
 
 pytestmark = [pytest.mark.live, pytest.mark.timeout(90)]
 
 
 async def test_native_group_ingress_and_deferred_smtp_handoff(tmp_path):
+    """Two-profile native proof: ingress, restart recovery, renderer-derived reply.
+
+    Requires a private two-profile fixture. The delivered reply is rendered by
+    ChatmailRenderer from a bound reply relation so the peer snapshot verifies
+    renderer-derived quote selection, attribution prefix and sender override,
+    not hand-built payload literals.
+    """
     path = os.environ.get("MEDRE_CHATMAIL_TEST_CONFIG")
     if not path:
         pytest.skip("Set MEDRE_CHATMAIL_TEST_CONFIG to a private two-profile fixture")
@@ -159,25 +171,52 @@ async def test_native_group_ingress_and_deferred_smtp_handoff(tmp_path):
             attempt_number=1,
             source="live",
         )
-        reply = "[Quote qualification] Alice & 🦉: " + nonce + " reply"
-        sender_override = "Alice & 🦉 [Quote qualification]"
+        # Deliver a renderer-derived reply so the release gate exercises the
+        # same native reference selection, attribution and fallback derivation
+        # the live pipeline uses, not a hand-built payload.
+        reply_event = msgspec.structs.replace(
+            event,
+            event_id=nonce,
+            payload={"text": nonce + " reply"},
+            relations=(
+                EventRelation(
+                    relation_type="reply",
+                    target_event_id=event.event_id,
+                    target_native_ref=None,
+                    key=None,
+                    fallback_text=str(event.payload["body"]),
+                    target_fact=RelationTargetFact(
+                        status="bound",
+                        adapter="mail",
+                        native_channel_id=str(bot_chat),
+                        # The accepted inbound native ref survives core
+                        # checkpoint and native profile restart; it must not
+                        # be rebound to a different chat or local profile on
+                        # outbound submission.
+                        native_message_id=event.source_native_ref.native_message_id,
+                    ),
+                ),
+            ),
+        )
+        reply_result = await ChatmailRenderer({"mail": bot_config}).render(
+            reply_event,
+            RenderingContext(
+                target_adapter="mail",
+                target_channel=str(bot_chat),
+                target_platform="chatmail",
+                delivery_strategy="direct",
+                source_origin_label="Reply qualification",
+            ),
+        )
+        assert "Reply qualification" in reply_result.payload["text"]
+        assert reply_result.payload["override_sender_name"].endswith(
+            " [Reply qualification]"
+        )
+        assert reply_result.payload["reply_native_ref"] == (
+            event.source_native_ref.native_message_id
+        )
         handoff = await bot.deliver(
-            RenderingResult(
-                nonce,
-                "mail",
-                str(bot_chat),
-                {
-                    "text": reply,
-                    "chat_id": bot_chat,
-                    "override_sender_name": sender_override,
-                    # The accepted inbound native ref survives core checkpoint
-                    # and native profile restart; it must not be rebound to a
-                    # different chat or local profile on outbound submission.
-                    "reply_native_ref": event.source_native_ref.native_message_id,
-                    "reply_fallback_text": reply + " [reply to: " + nonce + "]",
-                },
-                attempt_provenance=provenance,
-            )
+            replace(reply_result, attempt_provenance=provenance)
         )
         assert handoff.disposition == "deferred"
         async with asyncio.timeout(30):
@@ -194,8 +233,13 @@ async def test_native_group_ingress_and_deferred_smtp_handoff(tmp_path):
                     snapshot = await peer.call(
                         "get_message", peer_config.account_id, message_id
                     )
-                    if snapshot["fromId"] != 1 and snapshot["text"] == reply:
-                        assert snapshot.get("overrideSenderName") == sender_override
+                    if (
+                        snapshot["fromId"] != 1
+                        and snapshot["text"] == reply_result.payload["text"]
+                    ):
+                        assert snapshot.get("overrideSenderName") == (
+                            reply_result.payload.get("override_sender_name")
+                        )
                         quote = snapshot.get("quote", {})
                         assert quote.get("kind") == "WithMessage"
                         assert quote.get("messageId") == original_id

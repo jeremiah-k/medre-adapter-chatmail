@@ -55,3 +55,10 @@ independent-peer test. Native reply promotion must not merge or release until
 the live campaign passes on the candidate revision pair. Record those revisions,
 the pinned SDK versions and the peer result with qualification evidence; exclude
 credentials and private profile paths.
+
+The [2026-10-29 native reply qualification](evidence/native-replies-2026-10-29.json)
+records a passing two-profile run with an explicit sender/origin label and an
+independent peer-side quote after reconnect and restart. It uses the pinned
+2.65.0 client/server and a disposable GreenMail relay. Freshly created groups
+need native setup to settle in both directions before the history baseline;
+confirm independent native messages in both profiles before running the gate.
