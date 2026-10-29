@@ -182,3 +182,13 @@ remain SDK-free and MUST NOT open a native profile. The standalone
 policy. Both paths MUST retain exit status, hidden secret input, profile locks,
 native cleanup, and configuration/environment selection. Provisioning remains
 an explicit operator action; runtime startup MUST NOT create an identity.
+
+## Common diagnostic projection
+
+Native and SDK-free adapters MUST expose the core common diagnostic keys.
+`health` MUST match the same retained observation returned by `health_check`;
+`mode` MUST distinguish `live` from `fake`. Legacy provider-specific keys MUST
+remain available. Unobserved connection state, uncounted delivery failures,
+and unavailable reconnect/error details MUST remain `None`, rather than
+fabricated success, zero counts or inferred remote reachability. Cumulative
+`reconnects` MUST NOT be relabeled as consecutive `reconnect_attempts`.
