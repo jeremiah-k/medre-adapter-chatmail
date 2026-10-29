@@ -84,8 +84,23 @@ def test_native_account_lock_capture_and_reopen(tmp_path, monkeypatch):
         assert (root / "core.sqlite-wal").stat().st_size > 0
         with journal.connection:
             journal.connection.executemany(
-                "INSERT INTO pending VALUES (?, '{}', 5, 'body', ?, NULL, NULL)",
-                [("accepted-operation", "accepted"), ("unknown-operation", "unknown")],
+                "INSERT INTO pending "
+                "(identity, provenance, chat, body, status, native, sender_override, "
+                "reply_ref, fallback_body) "
+                "VALUES (?, '{}', 10, 'body', ?, ?, 'Alice [Matrix]', ?, ?)",
+                [
+                    (
+                        identity,
+                        status,
+                        native,
+                        f"{directory}:19",
+                        "body [reply to: earlier]",
+                    )
+                    for identity, status, native in [
+                        ("accepted-operation", "accepted", 31),
+                        ("unknown-operation", "unknown", None),
+                    ]
+                ],
             )
         monkeypatch.setattr(
             maintenance,
@@ -114,10 +129,23 @@ def test_native_account_lock_capture_and_reopen(tmp_path, monkeypatch):
         with closing(
             sqlite3.connect(restored / "chatmail-pending.sqlite")
         ) as connection:
-            assert dict(connection.execute("SELECT identity, status FROM pending")) == {
-                "accepted-operation": "accepted",
-                "unknown-operation": "unknown",
-            }
+            assert connection.execute(
+                "SELECT identity, status, native, sender_override, reply_ref, fallback_body "
+                "FROM pending ORDER BY identity"
+            ).fetchall() == [
+                (
+                    identity,
+                    status,
+                    native,
+                    "Alice [Matrix]",
+                    f"{directory}:19",
+                    "body [reply to: earlier]",
+                )
+                for identity, status, native in [
+                    ("accepted-operation", "accepted", 31),
+                    ("unknown-operation", "unknown", None),
+                ]
+            ]
         restored_accounts = restored / "accounts"
         assert not (restored_accounts / directory / "dc.db-blobs").exists()
         with _manager(client, restored_accounts, binary) as rpc:

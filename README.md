@@ -72,7 +72,10 @@ are available for existing profiles and native server installations.
 
 ## Delivery and rendering
 
-- Preserve plain text and MEDRE attribution; represent replies and threads through
+- Preserve plain text and MEDRE attribution. When core uniquely binds an earlier
+  message to a native reference in the same private profile and chat,
+  a reply uses Delta Chat's native quote UI (`quotedMessageId`). If the target
+  cannot be verified, retain a readable inline reply instead. Threads still use
   core's inline fallback. Refuse text exceeding the configured UTF-8 budget.
 - Baseline existing history on first use. Resume after the last durable checkpoint
   on subsequent starts, committing the cursor only after canonical admission.

@@ -37,7 +37,7 @@ from .state import Journal, PendingLimitError
 CAPABILITIES = AdapterCapabilities(
     text=True,
     title=False,
-    replies="fallback",
+    replies="native",
     threads="fallback",
     reactions="unsupported",
     edits="unsupported",
@@ -57,7 +57,7 @@ CAPABILITIES = AdapterCapabilities(
 
 def validate_payload(
     result: RenderingResult, config: ChatmailConfig
-) -> tuple[int, str, str | None]:
+) -> tuple[int, str, str | None, str | None, str | None]:
     """Validate the complete rendered claim before durable attempt admission."""
     payload = result.payload
     if result.target_adapter != config.adapter_id or not isinstance(payload, Mapping):
@@ -71,18 +71,43 @@ def validate_payload(
         type(payload.get("chat_id")) is not int
         or payload["chat_id"] != conversation
         or not {"chat_id", "text"} <= set(payload)
-        or set(payload) - {"chat_id", "text", "override_sender_name"}
+        or set(payload)
+        - {
+            "chat_id",
+            "text",
+            "override_sender_name",
+            "reply_native_ref",
+            "reply_fallback_text",
+        }
         or not plain_text(text)
         or not text.strip()
         or len(text.encode("utf-8")) > config.max_text_bytes
     ):
         raise AdapterPermanentError("Invalid rendered Chatmail addressing or text")
-    if "override_sender_name" in payload:
-        override = payload["override_sender_name"]
-        if not config.native_sender_attribution or not sender_name(override):
-            raise AdapterPermanentError("Invalid rendered Chatmail sender attribution")
-        return conversation, text, override
-    return conversation, text, None
+    override = payload.get("override_sender_name")
+    if "override_sender_name" in payload and (
+        not config.native_sender_attribution or not sender_name(override)
+    ):
+        raise AdapterPermanentError("Invalid rendered Chatmail sender attribution")
+    reply_ref = payload.get("reply_native_ref")
+    reply_fallback = payload.get("reply_fallback_text")
+    if (reply_ref is None) != (reply_fallback is None):
+        raise AdapterPermanentError("Chatmail reply target and fallback must be paired")
+    if reply_ref is not None and (
+        not plain_text(reply_ref)
+        or not reply_ref
+        or not plain_text(reply_fallback)
+        or not reply_fallback.strip()
+        or len(reply_fallback.encode("utf-8")) > config.max_text_bytes
+    ):
+        raise AdapterPermanentError("Invalid rendered Chatmail native reply")
+    return (
+        conversation,
+        text,
+        override if isinstance(override, str) else None,
+        reply_ref if isinstance(reply_ref, str) else None,
+        reply_fallback if isinstance(reply_fallback, str) else None,
+    )
 
 
 def _open_journal(state_dir: str, scope: str) -> Journal:
@@ -368,7 +393,9 @@ class ChatmailAdapter(AdapterContract):
             await asyncio.sleep(0)
 
     async def deliver(self, result: RenderingResult) -> AdapterHandoffResult:
-        conversation, text, override = validate_payload(result, self.config)
+        conversation, text, override, reply_ref, reply_fallback = validate_payload(
+            result, self.config
+        )
         provenance = result.attempt_provenance
         if self.ctx is None:
             raise AdapterSendError("Chatmail adapter is not accepting deliveries")
@@ -399,6 +426,8 @@ class ChatmailAdapter(AdapterContract):
                 text,
                 self.config.max_pending,
                 override,
+                reply_ref,
+                reply_fallback,
             )
         except PendingLimitError:
             raise AdapterSendError(
@@ -413,6 +442,22 @@ class ChatmailAdapter(AdapterContract):
             native_channel_id=result.target_channel,
             note="Retained in the private Chatmail queue; SMTP handoff is pending",
         )
+
+    def _reply_id(self, reference: str) -> int | None:
+        """Parse a profile-scoped local message ID without accepting aliases."""
+        prefix = f"{self._profile}:"
+        if not reference.startswith(prefix):
+            return None
+        value = reference[len(prefix) :]
+        if (
+            not 1 <= len(value) <= 10
+            or not value.isascii()
+            or not value.isdecimal()
+            or value.startswith("0")
+        ):
+            return None
+        number = int(value)
+        return number if 10 <= number <= 4_294_967_295 else None
 
     async def _flush(self) -> None:
         session = self.session
@@ -439,12 +484,44 @@ class ChatmailAdapter(AdapterContract):
                     await asyncio.to_thread(journal.update, row["identity"], "rejected")
                     row["status"] = "rejected"
                 else:
+                    # Native local IDs may be recycled in another profile/chat.
+                    # Verify existence and conversation ownership while still
+                    # unreserved. If it disappeared, use the immutable readable
+                    # fallback prepared during rendering instead of guessing.
+                    quote_id = None
+                    body = row["body"]
+                    reference = row["reply_ref"]
+                    if reference is not None:
+                        candidate = self._reply_id(reference)
+                        if row["fallback_body"] is None:
+                            raise AdapterPermanentError(
+                                "Chatmail queued reply fallback is missing"
+                            )
+                        quoted = None
+                        if candidate is not None:
+                            try:
+                                quoted = await session.call(
+                                    "get_message", self.config.account_id, candidate
+                                )
+                            except RpcCallError:
+                                pass
+                        if (
+                            isinstance(quoted, Mapping)
+                            and type(quoted.get("id")) is int
+                            and quoted["id"] == candidate
+                            and quoted.get("chatId") == row["chat"]
+                        ):
+                            quote_id = candidate
+                        else:
+                            body = row["fallback_body"]
                     await asyncio.to_thread(
                         journal.update, row["identity"], "submitting"
                     )
                     # Commit the claim immediately before invoking native send.
                     # A crash or RPC rejection after this point is uncertain.
-                    message = {"text": row["body"]}
+                    message = {"text": body}
+                    if quote_id is not None:
+                        message["quotedMessageId"] = quote_id
                     if row["sender_override"] is not None:
                         message["overrideSenderName"] = row["sender_override"]
                     try:

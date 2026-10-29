@@ -40,10 +40,25 @@ handles at most 32 messages per chat before yielding to outbound processing.
 The native API enumerates a chat's IDs without pagination; large chat histories
 therefore have enumeration cost even though payload processing is bounded.
 
-Controls, blocked contacts, self echoes, edits and media MUST NOT masquerade as
-fresh text. Native reply references are restricted to the same profile and chat;
-outbound replies and threads use core's plain-text fallback. Encryption/signature
+Controls, blocked contacts, self echoes, edits and media MUST NOT masquerade as fresh
+text. Native reply references are restricted to the same profile and chat. Outbound text
+replies MAY select a native `quotedMessageId` only from core's `bound` destination-
+scoped target fact, never from a relation's unverified native reference. Ambiguous,
+missing, or unavailable core bindings MUST use inline fallback. The adapter MUST check
+the active profile UUID and native message's exact chat before submission. Unresolved,
+untrusted, malformed, cross-profile, rebound, or unavailable targets MUST degrade to
+readable inline reply text. Threads remain plain-text fallbacks. Encryption/signature
 metadata describes native evidence and MUST NOT imply bridge confidentiality.
+
+The selected native reference and fully attributed fallback MUST remain part of one
+immutable journal attempt. Both native and fallback bodies MUST fit the rendering budget
+before admission. The message-ID component of a native reference MUST be canonical ASCII
+decimal within the RPC's ordinary unsigned 32-bit range. Unusable profile or message IDs
+MUST select the retained fallback without a native lookup. A persisted submission fence
+MUST precede either form of native send; an accepted native ID MUST survive restart and
+feedback retries without rechecking the parent or submitting again. Nullable quote
+columns MUST preserve pending native IDs when opening a journal created without quote
+support.
 
 ## Outbound ownership
 
@@ -78,7 +93,9 @@ from being flushed. Shutdown stops ingress and retains pending native correlatio
 Diagnostics MUST omit private paths, QR payloads and credentials.
 
 Capabilities advertise text, direct and group conversations, store-and-forward,
-and fallback replies/threads. Each instance exposes its configured text budget.
+and native replies for validated, same-profile/same-chat text targets, with
+readable fallback for unavailable targets. Threads remain fallback-only. Each
+instance exposes its configured text budget.
 Attachments, native mutations, read receipt forwarding, typing notifications,
 presence, puppeting and bridge-wide encryption are not advertised.
 
