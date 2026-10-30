@@ -62,3 +62,12 @@ independent peer-side quote after reconnect and restart. It uses the pinned
 2.65.0 client/server and a disposable GreenMail relay. Freshly created groups
 need native setup to settle in both directions before the history baseline;
 confirm independent native messages in both profiles before running the gate.
+
+The [RPC 2.66.0 qualification](evidence/native-replies-rpc-2.66.0-2026-10-29.json)
+records a passing repetition on fresh native profiles with the 2.66.0 client and
+server. The independent peer observes the renderer-derived quote and exact
+sender/origin presentation after reconnect and restart. Native SDK contracts
+also qualify profile exclusion and stopped-state capture/reopen using fresh
+2.66.0 state. This is same-version restore evidence, not an upgrade path.
+Both records retain their tested revision pair and source hashes; the 2.65.0
+record describes its own campaign and is not evidence for a different SDK.
