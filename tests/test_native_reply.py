@@ -4,6 +4,7 @@ import sqlite3
 from dataclasses import replace
 from types import SimpleNamespace
 
+from medre.core.events import EventMetadata
 import msgspec
 import pytest
 
@@ -78,6 +79,37 @@ async def test_renderer_retains_scoped_native_reference_and_readable_fallback(co
     assert validate_payload(result, config)[-2:] == (
         "profile-uuid:19",
         result.payload["reply_fallback_text"],
+    )
+
+
+def binding_storage(read_fixture, refs):
+    """Canned admission-authorized quotes and metadata-only identity reads."""
+
+    async def metadata(event_id):
+        target = await read_fixture(event_id)
+        if target is None:
+            return None
+        return msgspec.structs.replace(
+            target,
+            payload={},
+            relations=(),
+            metadata=EventMetadata(routing=target.metadata.routing),
+        )
+
+    async def quote(event_id, *, now=None):
+        target = await read_fixture(event_id)
+        return SimpleNamespace(
+            status="denied" if target is None else "retained", event=target
+        )
+
+    async def native_refs(event_id, *, metadata_only=False):
+        return await refs(event_id)
+
+    return SimpleNamespace(
+        get=metadata,
+        get_metadata=metadata,
+        read_reply_context=quote,
+        list_native_refs_for_event=native_refs,
     )
 
 
@@ -244,9 +276,9 @@ async def test_renderer_obeys_core_binding_failure(config, failure):
             for number in (19, 20)
         ]
 
-    enriched = await RelationEnricher(
-        SimpleNamespace(get=get, list_native_refs_for_event=refs)
-    ).enrich_for_target(source, target_adapter="mail", target_channel="10")
+    enriched = await RelationEnricher(binding_storage(get, refs)).enrich_for_target(
+        source, target_adapter="mail", target_channel="10"
+    )
     assert (
         enriched.relations[0].target_fact.status
         == {
@@ -369,9 +401,9 @@ async def test_core_bound_target_wins_over_conflicting_relation_reference(config
             )
         ]
 
-    enriched = await RelationEnricher(
-        SimpleNamespace(get=get, list_native_refs_for_event=refs)
-    ).enrich_for_target(source, target_adapter="mail", target_channel="10")
+    enriched = await RelationEnricher(binding_storage(get, refs)).enrich_for_target(
+        source, target_adapter="mail", target_channel="10"
+    )
     assert enriched.relations[0].target_fact.status == "bound"
     assert (
         enriched.relations[0].target_native_ref.native_message_id == "profile-uuid:19"
