@@ -5,7 +5,7 @@ on:
   pull_request:
   workflow_dispatch:
     inputs:
-      core_ref:
+      core_ref: # checkov:skip=CKV_GHA_7:manual qualification pin; only collaborators with write access can trigger workflow_dispatch
         description: Exact MEDRE revision to qualify for this run (defaults to main)
         type: string
 permissions:
@@ -45,8 +45,8 @@ jobs:
       - name: Check Python quality and whitespace
         if: matrix.mode == 'fake' && matrix.python == '3.13'
         run: |
-          uvx --from ruff==0.16.9 ruff check src tests
-          uvx --from black==26.5.1 black --check src tests
+          uvx --from ruff==0.17.3 ruff check src tests
+          uvx --from black==26.10.1 black --check src tests
           git show --format= --check HEAD
       - name: Install locked core test environment
         run: uv sync --project .core --locked --extra dev

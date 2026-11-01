@@ -1,3 +1,5 @@
+# Native sender attribution
+
 Chatmail now presents the original sender and origin through Delta Chat's per-message
 sender override while retaining the configured body prefix. The durable queue binds
 that display claim to the exact attempt and migrates existing pending correlations.
