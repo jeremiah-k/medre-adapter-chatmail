@@ -12,10 +12,7 @@
       "type": "boolean"
     },
     "adapter_kind": {
-      "enum": [
-        "real",
-        "fake"
-      ]
+      "enum": ["real", "fake"]
     },
     "accounts_dir": {
       "type": "string"
