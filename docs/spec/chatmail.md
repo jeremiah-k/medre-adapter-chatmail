@@ -200,6 +200,16 @@ policy. Both paths MUST retain exit status, hidden secret input, profile locks,
 native cleanup, and configuration/environment selection. Provisioning remains
 an explicit operator action; runtime startup MUST NOT create an identity.
 
+The commands stage provisioning observations: `init` configures the profile
+from an explicit relay payload, `accounts` reports configured state, `join`
+completes one native secure join and observes native send readiness for that
+conversation, and `chats` enumerates ordinary conversations of the profile.
+A configured profile is not relay service acceptance, and an accepted chat is
+not recipient delivery evidence; relay-side limits and message outcomes remain
+observable only through delivery feedback. Command results MUST NOT be
+presented as relay acceptance, delivery, or read evidence, and they grant no
+send authority; routing configuration governs bridge traffic.
+
 ## Common diagnostic projection
 
 Native and SDK-free adapters MUST expose the core common diagnostic keys.

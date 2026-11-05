@@ -28,47 +28,110 @@ environments and uses the same arguments and execution path.
 
 ## Set up a profile
 
+Provisioning proceeds through explicit stages: prerequisites, profile
+provisioning, conversation acceptance and discovery, then offline
+configuration and verification. Profile creation and invitation acceptance
+happen only on these commands; runtime startup never creates an identity or
+accepts an invitation. Chatmail declares no `medre config native` form:
+a profile needs the pinned native tooling that `medre adapter chatmail`
+drives, so the provider contributes these commands instead of an offline
+setup form. Each stage below states what its observations prove and what
+they leave unproven.
+
+### Prerequisites
+
+- The provider installed in MEDRE's environment (above), with the RPC client
+  and native server it ships together.
+- A relay's private `DCACCOUNT:` or `DCLOGIN:` QR payload for `init`.
+- An invitation QR payload (`OPENPGP4FPR:` or an `i.delta.chat` link) for
+  each conversation to bridge.
+- A terminal with echo control for hidden input, or `--qr-stdin` for
+  automation. Credentials never belong in command arguments or committed
+  files.
+- The bridge stopped and no other client using the profile. The profile is
+  dedicated to one adapter instance; concurrent MEDRE commands refuse the
+  profile lock, and an unrelated Chatmail client does not honor that lock.
+
+### Stage 1: provision the profile
+
 ```bash
 uv run --locked medre adapter chatmail init --adapter mail
 uv run --locked medre adapter chatmail accounts --adapter mail
+```
+
+`init` reads the relay's private QR payload with hidden terminal input,
+creates the profile on this explicit command only, and keeps an existing
+configured account. `accounts` lists local account IDs and their configured
+state without exposing credentials. A configured profile proves that the
+native core reports this account configured. Profile provisioning is not
+relay service acceptance: relay-side limits surface only through later
+delivery feedback, and this stage sends nothing.
+
+### Stage 2: accept conversations and discover chat IDs
+
+```bash
 uv run --locked medre adapter chatmail join --adapter mail
 uv run --locked medre adapter chatmail chats --adapter mail --groups --json
 ```
 
-`init` asks for a relay's private DCACCOUNT or DCLOGIN QR payload using hidden
-terminal input. It creates a profile only on this explicit command and keeps an
-existing configured account. `join` accepts a contact or group invitation.
-Use `--qr-stdin` to supply a QR payload through standard input in automation;
-credentials never belong in command arguments or committed files.
+`join` reads one contact or group invitation, completes the native secure
+join for it, and waits until the native core reports that the chat can send.
+`chats` lists ordinary conversations of this profile, groups first;
+`--groups` limits discovery to groups, and omitting it includes direct
+conversations. A joined chat proves that this conversation is accepted and
+natively sendable. It does not prove that bridge messages reach their
+recipients.
 
-Profiles default to MEDRE's instance state directory, under
-`adapters/mail/chatmail/accounts`. `MEDRE_HOME` and the usual XDG paths are
-honored. Use the same `--adapter` and `--accounts-dir` options for setup and
-runtime configuration. Once a runtime YAML exists, `--config bridge.yaml
---adapter mail` selects its profile and account directly.
+### Stage 3: configure and verify offline
 
-The profile is dedicated to one adapter instance. Stop the bridge before running
-profile commands; concurrent MEDRE commands refuse the profile lock. Do not open
-the directory simultaneously in an unrelated Chatmail client. Keep the profile,
-MEDRE database and pending-delivery journal together when backing up state.
-
-Groups appear first in `chats`; `--groups` limits discovery to groups. Omit it
-to include direct conversations. Use the accepted chat IDs from `chats` in the adapter configuration and routes:
+Save a private `connections.yaml` using the accepted chat IDs from `chats`:
 
 ```yaml
 adapters:
   chatmail:
     mail:
-      account_id: 1
+      adapter_kind: real
+      account_id: 1 # Replace with the ID reported by 'accounts'.
       chats: [12] # Replace with the accepted chat IDs from this profile.
       origin_label: Chatmail
 ```
+
+Then validate without contacting the profile:
+
+```bash
+uv run --locked medre config check --config connections.yaml
+uv run --locked medre routes plan --config connections.yaml
+```
+
+Both commands run entirely offline against the typed configuration model.
+This fragment describes one connection, not a complete bridge: its route plan
+has no delivery legs until a second adapter and explicit routes are added.
+Use `medre config bridge` to construct those legs, then run both checks again.
+Neither a valid config nor a nonempty route plan proves peer delivery.
+`medre smoke` exercises the SDK-free fake only; real configurations are
+rejected by fake smoke. An initial `deferred` result with `local_queue`
+confirmation records retention in the private pending-delivery journal only;
+SMTP handoff is pending. Later correlated `remote_service` feedback confirms
+SMTP acceptance without claiming recipient delivery or reading.
+
+## Configuration reference
 
 Add routes using decimal channel strings, such as `source_channel: "12"` or
 `dest_channel: "12"`. Chat IDs are local to a profile; contact addresses are not
 used to guess conversation identity. Run `medre config check` before starting
 the bridge. Explicit `accounts_dir`, `state_dir` and `rpc_server_path` overrides
 are available for existing profiles and native server installations.
+
+Profiles default to MEDRE's instance state directory, under
+`adapters/mail/chatmail/accounts`. `MEDRE_HOME` and the usual XDG paths are
+honored. Use the same `--adapter` and `--accounts-dir` options for setup and
+runtime configuration. Once a runtime YAML exists, `--config bridge.yaml
+--adapter mail` selects its profile and account directly, including for the
+`chats` discovery above.
+
+Use `--qr-stdin` to supply a QR payload through standard input in automation.
+Keep the profile, MEDRE database and pending-delivery journal together when
+backing up state.
 
 ## Delivery and rendering
 
