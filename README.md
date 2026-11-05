@@ -91,7 +91,7 @@ adapters:
   chatmail:
     mail:
       adapter_kind: real
-      account_id: 1
+      account_id: 1 # Replace with the ID reported by 'accounts'.
       chats: [12] # Replace with the accepted chat IDs from this profile.
       origin_label: Chatmail
 ```
@@ -104,10 +104,15 @@ uv run --locked medre routes plan --config connections.yaml
 ```
 
 Both commands run entirely offline against the typed configuration model.
+This fragment describes one connection, not a complete bridge: its route plan
+has no delivery legs until a second adapter and explicit routes are added.
+Use `medre config bridge` to construct those legs, then run both checks again.
+Neither a valid config nor a nonempty route plan proves peer delivery.
 `medre smoke` exercises the SDK-free fake only; real configurations are
-rejected by fake smoke. The first correlated native handoff report
-(`remote_service`) is the earliest outbound evidence, and SMTP acceptance
-does not claim recipient delivery or reading.
+rejected by fake smoke. An initial `deferred` result with `local_queue`
+confirmation records retention in the private pending-delivery journal only;
+SMTP handoff is pending. Later correlated `remote_service` feedback confirms
+SMTP acceptance without claiming recipient delivery or reading.
 
 ## Configuration reference
 
