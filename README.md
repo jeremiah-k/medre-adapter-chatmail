@@ -44,6 +44,11 @@ each, core never executes them, and no file is written. On older cores this
 README remains the source of the journey. Each stage below states what its
 observations prove and what they leave unproven.
 
+> The commands in this journey use `--adapter mail` as an **example** instance.
+> Replace that value consistently with the actual configured provider ID before
+> running commands. `medre config native` displays instructions only; it does
+> not substitute IDs, provision accounts, or create a bridge.
+
 ### Prerequisites
 
 - The provider installed in MEDRE's environment (above), with the RPC client
