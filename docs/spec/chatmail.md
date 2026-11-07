@@ -111,6 +111,12 @@ conversation scan leave the native session running and other chats progressing.
 The polling interval bounds retries after a rejected download.
 
 Profile shutdown MUST release its lease even if draining native calls times out.
+Shutdown kills the owned native process when its close drain misses the
+configured timeout, drains the killed process and its client threads within a
+fixed bound, and reaps the native process before the lease is released whenever
+that drain completes. A pending native call surfaces a session error once the
+process dies instead of blocking its caller or interpreter exit, and a
+replacement session may start immediately after shutdown.
 Peer display labels MUST be printable on one line before relay attribution.
 
 ## Per-message native attribution
@@ -187,7 +193,14 @@ with reverse-order cleanup on failure. Native account-manager exclusion uses
 the released Delta Chat core's `fd_lock` semantics on supported Unix hosts;
 no file is created/truncated merely to acquire a lock. A running pinned native account manager MUST block acquisition of its
 accounts.lock. Non-cooperating processes and other hosts remain outside the
-machine-local exclusion claim. A blob-bearing or multi-account
+machine-local exclusion claim. The native lock is the machine-local exclusion
+authority for a running native manager, while the MEDRE SQLite lease gates
+MEDRE commands: a second MEDRE session is refused before any native process is
+spawned. A native acquisition refused by a live manager surfaces as a retryable
+session start failure after the manager's bounded backoff, and the lock is
+released when the native process dies, so a killed native process cannot keep
+the profile excluded or cause concurrent access while unreaped.
+A blob-bearing or multi-account
 profile requires a separately qualified coherent native export.
 
 ## Operator command namespace
