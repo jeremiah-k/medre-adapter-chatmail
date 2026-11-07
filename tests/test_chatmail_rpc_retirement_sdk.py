@@ -50,6 +50,20 @@ def _process(rpc) -> object:
     return vars(rpc)["process"]
 
 
+def _suspend(process) -> None:
+    """Stop the native server and wait until the kernel reports it stopped.
+
+    SIGSTOP reaches the server's threads asynchronously, and a request sent
+    before the last thread stops can still be answered. waitpid(WUNTRACED)
+    returns only once the whole group stop completes, so every request after
+    this returns is deterministically unanswered until the process resumes
+    or dies.
+    """
+    process.send_signal(signal.SIGSTOP)
+    _, status = os.waitpid(process.pid, os.WUNTRACED)
+    assert os.WIFSTOPPED(status)
+
+
 async def _reap(process) -> None:
     if process.poll() is None:
         process.kill()
@@ -95,7 +109,7 @@ async def test_killed_server_resolves_pending_call_within_bound(config, retire):
         # Stop the server first so the pending call cannot receive an answer
         # before the kill; the request is registered synchronously by
         # future() before the off-thread wait begins.
-        process.send_signal(signal.SIGSTOP)
+        _suspend(process)
         pending = rpc.get_system_info.future()
         worker = asyncio.create_task(asyncio.to_thread(pending))
         started = time.monotonic()
@@ -128,7 +142,7 @@ async def test_close_blocks_on_stopped_server_until_kill(config, retire):
     process = _process(rpc)
     closer = None
     try:
-        process.send_signal(signal.SIGSTOP)
+        _suspend(process)
         closer = asyncio.create_task(asyncio.to_thread(rpc.close))
         # close() first issues stop_io_for_all_accounts() without a timeout.
         await wait_until(lambda: vars(rpc)["closing"], timeout=_RESOLUTION_BOUND)
@@ -183,7 +197,7 @@ async def test_native_manager_exclusion_surfaces_transient_start_failure(
     await asyncio.to_thread(holder.start)
     process = _process(holder)
     try:
-        process.send_signal(signal.SIGSTOP)
+        _suspend(process)
         session = retire(ChatmailSession(config))
         started = time.monotonic()
         with pytest.raises(SessionError, match="inspect the native profile"):
@@ -218,7 +232,7 @@ async def test_stop_reaps_before_lease_release_and_permits_restart(config, retir
     session = retire(ChatmailSession(config))
     await session.start()
     process = _process(session.rpc)
-    process.send_signal(signal.SIGSTOP)
+    _suspend(process)
     try:
         started = time.monotonic()
         # The drain wait times out against a stopped server; the owned
@@ -244,7 +258,7 @@ async def test_drain_timeout_stop_surfaces_call_failure_and_restart(config, reti
     await session.start()
     rpc = session.rpc
     process = _process(rpc)
-    process.send_signal(signal.SIGSTOP)
+    _suspend(process)
     pending = None
     try:
         before = set(vars(rpc)["request_results"])
@@ -276,7 +290,7 @@ async def test_cancelled_stop_kills_and_releases_lease(config, retire):
     await session.start()
     rpc = session.rpc
     process = _process(rpc)
-    process.send_signal(signal.SIGSTOP)
+    _suspend(process)
     task = asyncio.create_task(session.stop(timeout=5))
     try:
         await wait_until(lambda: vars(rpc)["closing"], timeout=_RESOLUTION_BOUND)
@@ -300,7 +314,7 @@ async def test_cancelled_stop_kills_and_releases_lease(config, retire):
 
 
 _SCRIPT = """
-import asyncio, signal, sys
+import asyncio, os, signal, sys
 from pathlib import Path
 from medre.adapters.chatmail.config import ChatmailConfig
 from medre.adapters.chatmail.session import ChatmailSession
@@ -321,6 +335,8 @@ async def main():
     # parent can retire it even when this wrapper dies untimely.
     Path(sys.argv[3]).write_text(str(vars(rpc)["process"].pid))
     vars(rpc)["process"].send_signal(signal.SIGSTOP)
+    _, status = os.waitpid(vars(rpc)["process"].pid, os.WUNTRACED)
+    assert os.WIFSTOPPED(status)
     before = set(vars(rpc)["request_results"])
     pending = asyncio.create_task(session.call("get_system_info"))
     while not set(vars(rpc)["request_results"]) - before:
@@ -335,7 +351,7 @@ print("retirement-complete")
 """
 
 _SCRIPT_HANG = """
-import asyncio, signal, sys
+import asyncio, os, signal, sys
 from pathlib import Path
 from medre.adapters.chatmail.config import ChatmailConfig
 from medre.adapters.chatmail.session import ChatmailSession
@@ -354,6 +370,8 @@ async def main():
     rpc = session.rpc
     Path(sys.argv[3]).write_text(str(vars(rpc)["process"].pid))
     vars(rpc)["process"].send_signal(signal.SIGSTOP)
+    _, status = os.waitpid(vars(rpc)["process"].pid, os.WUNTRACED)
+    assert os.WIFSTOPPED(status)
     # Hang forever against the SIGSTOP-ed server; only the parent's forced
     # timeout can retire this wrapper and its native server.
     await asyncio.get_running_loop().create_future()
