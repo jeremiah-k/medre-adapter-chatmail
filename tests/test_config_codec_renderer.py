@@ -226,11 +226,11 @@ def test_editor_schema_accepts_actual_sample_adapter_block():
 @pytest.mark.parametrize(
     "payload,expected",
     [
-        ({"body": "current", "text": "legacy"}, "legacy"),
+        ({"body": "current", "text": "unstyled"}, "unstyled"),
         (
             {
                 "body": "current",
-                "text": "legacy",
+                "text": "unstyled",
                 "formatting": {"version": 1, "spans": []},
             },
             "current",
@@ -238,7 +238,7 @@ def test_editor_schema_accepts_actual_sample_adapter_block():
     ],
 )
 async def test_renderer_preserves_shared_text_selection(config, payload, expected):
-    """Only optional style metadata may make body supersede a legacy alias."""
+    """Only optional style metadata may make body supersede the text field."""
     import msgspec
 
     event = ChatmailCodec(config, "profile").decode(snapshot(), timestamp=NOW)
@@ -257,8 +257,8 @@ async def test_renderer_preserves_shared_text_selection(config, payload, expecte
     "payload",
     [
         {"body": "valid body", "text": 42},
-        {"body": 42, "text": "legacy"},
-        {"body": None, "text": "legacy", "formatting": {"version": 1, "spans": []}},
+        {"body": 42, "text": "unstyled"},
+        {"body": None, "text": "unstyled", "formatting": {"version": 1, "spans": []}},
     ],
 )
 async def test_malformed_canonical_text_never_becomes_native_content(config, payload):
