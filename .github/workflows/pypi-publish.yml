@@ -1,0 +1,96 @@
+name: Upload Python Package to PyPI
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pypi-${{ github.event.release.tag_name }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build and check release distributions
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      eligible: ${{ steps.eligibility.outputs.eligible }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.release.tag_name }}
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+
+      - name: Validate release tag against package version
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          package_version="$(python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')"
+          test "${RELEASE_TAG#v}" = "${package_version}"
+
+      - name: Install build dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "build==1.6.1"
+
+      - name: Build distributions
+        run: python -m build
+
+      # medre>=0.1.0,<0.2.0 does not resolve from the PyPI index until medre
+      # 0.1.0 is published. A failed resolution skips the upload gracefully
+      # (workflow stays green) instead of failing the release; GitHub releases
+      # remain the interim distribution channel.
+      - name: Resolve built wheel dependencies from PyPI
+        id: pypi_dependencies
+        continue-on-error: true
+        run: python -m pip --isolated install --dry-run --ignore-installed --index-url https://pypi.org/simple dist/*.whl
+
+      - name: Record PyPI upload eligibility
+        id: eligibility
+        if: always()
+        env:
+          DEPENDENCIES_OUTCOME: ${{ steps.pypi_dependencies.outcome }}
+        run: |
+          if [ "${DEPENDENCIES_OUTCOME}" = "success" ]; then
+            echo "eligible=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "eligible=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Skipping PyPI upload: the built wheel's Requires-Dist set does not resolve from the real PyPI index (medre is not published yet); distributions remain attached to the GitHub release."
+            {
+              echo "### PyPI upload skipped"
+              echo ""
+              echo "The built wheel's Requires-Dist set does not resolve from the PyPI index. Publish the dependencies (medre 0.1.0) first, then re-release."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-distributions
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Publish checked distributions
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: release
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-distributions
+          path: dist
+      - name: Publish to PyPI
+        if: ${{ needs.build.outputs.eligible == 'true' }}
+        uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
