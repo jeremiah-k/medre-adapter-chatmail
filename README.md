@@ -123,7 +123,8 @@ Neither a valid config nor a nonempty route plan proves peer delivery.
 rejected by fake smoke. An initial `deferred` result with `local_queue`
 confirmation records retention in the private pending-delivery journal only;
 SMTP handoff is pending. Later correlated `remote_service` feedback confirms
-SMTP acceptance without claiming recipient delivery or reading.
+SMTP acceptance, with notes differentiated by native state: delivered with
+reading unconfirmed, or reading confirmed by a native MDN (read receipt).
 
 ## Configuration reference
 
@@ -156,13 +157,18 @@ backing up state.
 - Keep partial text messages pending. Exclude self echoes, blocked contacts,
   informational controls, edits and unsupported media from fresh-message ingress.
 - Return local queue admission as deferred delivery. Report SMTP acceptance only
-  after the native core reports its sent state; this does not claim recipient
-  delivery or reading.
+  after the native core reports its sent state; notes differentiate native
+  delivery (reading unconfirmed) from MDN-confirmed reading. Neither claims
+  relay acceptance or bridge confidentiality.
 - Retain exact attempt/native-ID correlation until core accepts delivery feedback.
   Recover correlated native jobs without resending. Abandon unsent or uncertain
   work recovered across a restart, requiring inspection before an explicit retry.
-- Expose encryption/signature observations in native metadata. Confidentiality
-  across the bridge and identity puppeting are not implied.
+- Expose encryption/signature observations in native metadata, alongside the
+  sender's chatmail address, native send/receive timestamps and validated
+  conversation facts; attribution carries the address as the sender handle.
+  A bounded opted-in `public_facts` projection (currently
+  `encrypted_and_signed`) feeds core's transport-neutral bridge context.
+  Confidentiality across the bridge and identity puppeting are not implied.
 
 Attachments, native edits/deletes/reactions, forwarded read receipts, typing
 notifications and puppeting are not advertised. The native core owns SMTP/IMAP,

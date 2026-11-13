@@ -143,6 +143,81 @@ def test_native_timestamp_is_preserved(config):
     assert event.timestamp.timestamp() == 1000
 
 
+def test_native_sender_address_and_timestamps_are_recorded(config):
+    event = ChatmailCodec(config, "profile").decode(snapshot(), timestamp=NOW)
+    native = native_namespace(event.metadata.native.data)
+    assert native["sender_address"] == "alice@example.org"
+    assert native["timestamp_sent"] == 1729200000
+    assert native["timestamp_received"] == 1729200002
+    assert native["public_facts"] == {"encrypted_and_signed": True}
+    unsealed = ChatmailCodec(config, "profile").decode(
+        snapshot(showPadlock=False), timestamp=NOW
+    )
+    assert native_namespace(unsealed.metadata.native.data)["public_facts"] == {
+        "encrypted_and_signed": False
+    }
+
+
+@pytest.mark.parametrize(
+    "address",
+    [
+        None,
+        "",
+        12,
+        True,
+        " alice@example.org",
+        "alice@example.org\n",
+        "alice sm@example.org",
+        "a" * 1025,
+    ],
+)
+def test_absent_or_malformed_addresses_and_times_are_omitted(config, address):
+    event = ChatmailCodec(config, "profile").decode(
+        snapshot(
+            timestamp=0,
+            sortTimestamp=0,
+            receivedTimestamp=0,
+            sender={"isBlocked": False, "displayName": "Alice", "address": address},
+        ),
+        timestamp=NOW,
+    )
+    native = native_namespace(event.metadata.native.data)
+    assert "sender_address" not in native
+    assert "timestamp_sent" not in native
+    assert "timestamp_received" not in native
+
+
+def test_validated_chat_facts_join_admitted_events(config):
+    facts = {
+        10: {"chat_type": "Group", "chat_name": "Bridge Group", "chat_protected": True}
+    }
+    event = ChatmailCodec(config, "profile", chat_facts=facts).decode(
+        snapshot(), timestamp=NOW
+    )
+    native = native_namespace(event.metadata.native.data)
+    assert native["chat_type"] == "Group"
+    assert native["chat_name"] == "Bridge Group"
+    assert native["chat_protected"] is True
+    without = ChatmailCodec(config, "profile").decode(snapshot(), timestamp=NOW)
+    assert "chat_name" not in native_namespace(without.metadata.native.data)
+    assert "chat_protected" not in native_namespace(without.metadata.native.data)
+
+
+def test_chat_facts_degrade_without_invention():
+    from medre.adapters.chatmail.codec import chat_facts
+
+    assert chat_facts(
+        {"chatType": "Group", "name": "Bridge Group", "isEncrypted": True}
+    ) == {"chat_type": "Group", "chat_name": "Bridge Group", "chat_protected": True}
+    assert chat_facts(
+        {"chatType": "Group", "name": "bad\nname", "isEncrypted": True}
+    ) == {"chat_type": "Group", "chat_protected": True}
+    assert chat_facts({"chatType": "Group", "name": None, "isEncrypted": "yes"}) == {
+        "chat_type": "Group"
+    }
+    assert chat_facts({}) == {}
+
+
 async def test_renderer_preserves_text_and_refuses_unknown_kinds_and_budgets(config):
     event = ChatmailCodec(config, "profile").decode(snapshot(), timestamp=NOW)
     renderer = ChatmailRenderer({"mail": config})

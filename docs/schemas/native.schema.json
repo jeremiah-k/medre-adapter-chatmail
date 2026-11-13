@@ -29,6 +29,37 @@
     "sender_label": {
       "type": "string"
     },
+    "sender_address": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024,
+      "description": "Native contact email address as supplied by the pinned RPC ContactObject, recorded as observed platform identity. It MUST NOT be used as a contact identity lookup key. Absent, padded or whitespace-bearing values are omitted."
+    },
+    "timestamp_sent": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Native message send time in unix seconds as supplied by the pinned RPC MessageObject 'timestamp' field; omitted when absent or nonpositive."
+    },
+    "timestamp_received": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Native message receive time in unix seconds as supplied by the pinned RPC MessageObject 'receivedTimestamp' field; omitted when absent or nonpositive (as for most outgoing messages)."
+    },
+    "chat_type": {
+      "type": "string",
+      "enum": ["Group", "Single"],
+      "description": "Validated native conversation kind observed at connection setup from BasicChat 'chatType'."
+    },
+    "chat_name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024,
+      "description": "Native conversation name observed at connection setup from BasicChat 'name'. maxLength counts Unicode characters; a 1024 UTF-8 byte limit is enforced at capture time. Malformed or oversized names are omitted."
+    },
+    "chat_protected": {
+      "type": "boolean",
+      "description": "Key-contact protection state observed at connection setup from BasicChat 'isEncrypted' (all contacts are key-contacts); does not imply bridge confidentiality."
+    },
     "encrypted_and_signed": {
       "type": "boolean"
     },
@@ -37,6 +68,31 @@
       "minLength": 1,
       "maxLength": 1024,
       "description": "Untrusted per-message display claim; does not replace contact identity. maxLength counts Unicode characters; ingress and delivery validators separately enforce a 1024 UTF-8 byte limit and reject display-altering format controls other than Unicode joiners."
+    },
+    "public_facts": {
+      "type": "object",
+      "minProperties": 1,
+      "maxProperties": 12,
+      "propertyNames": {
+        "pattern": "^[a-z][a-z0-9_]{0,63}(?![\\s\\S])"
+      },
+      "additionalProperties": {
+        "oneOf": [
+          {
+            "type": "string",
+            "maxLength": 256
+          },
+          {
+            "type": "integer",
+            "minimum": -2147483648,
+            "maximum": 2147483647
+          },
+          {
+            "type": "boolean"
+          }
+        ]
+      },
+      "description": "Explicitly opted-in projection of bounded source facts for core's transport-neutral bridge context; the copy source for 'chatmail' public facts. Never raw native data."
     }
   },
   "required": [

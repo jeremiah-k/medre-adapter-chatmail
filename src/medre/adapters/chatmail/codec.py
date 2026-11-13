@@ -19,10 +19,60 @@ def native_id(profile: str, message_id: int) -> str:
     return f"{profile}:{message_id}"
 
 
+def contact_address(value: object) -> str | None:
+    """Accept a bounded native contact address without rewriting it.
+
+    The address is recorded as observed platform identity, never used as a
+    contact lookup key. Absent, malformed, padded or whitespace-bearing
+    values are omitted rather than guessed.
+    """
+    if not isinstance(value, str) or not plain_text(value):
+        return None
+    if not value or value != value.strip() or any(char.isspace() for char in value):
+        return None
+    return value if len(value) <= 1024 else None
+
+
+def native_seconds(value: object) -> int | None:
+    """Accept a positive native unix-seconds timestamp; omit anything else."""
+    return value if type(value) is int and value > 0 else None
+
+
+def chat_facts(info: Mapping[str, Any]) -> dict[str, Any]:
+    """Validated native conversation facts observed at connection setup.
+
+    The pinned RPC ``BasicChat`` shape supplies ``name``, ``chatType`` and
+    ``isEncrypted`` (key-contact protection); anything else, including a
+    missing or malformed value, is omitted rather than invented.
+    """
+    facts: dict[str, Any] = {}
+    if info.get("chatType") in {"Group", "Single"}:
+        facts["chat_type"] = info["chatType"]
+    name = info.get("name")
+    if (
+        isinstance(name, str)
+        and plain_text(name)
+        and bool(name.strip())
+        and name.isprintable()
+        and len(name.encode("utf-8")) <= 1024
+    ):
+        facts["chat_name"] = name
+    protected = info.get("isEncrypted")
+    if type(protected) is bool:
+        facts["chat_protected"] = protected
+    return facts
+
+
 class ChatmailCodec:
-    def __init__(self, config: ChatmailConfig, profile: str) -> None:
+    def __init__(
+        self,
+        config: ChatmailConfig,
+        profile: str,
+        chat_facts: Mapping[int, Mapping[str, Any]] | None = None,
+    ) -> None:
         self.config = config
         self.profile = profile
+        self.chat_facts: Mapping[int, Mapping[str, Any]] = dict(chat_facts or {})
 
     def decode(
         self, snapshot: Mapping[str, Any], *, timestamp: datetime
@@ -85,6 +135,33 @@ class ChatmailCodec:
         claimed_sender = (
             {"sender_override": presentation} if sender_name(presentation) else {}
         )
+        encrypted_and_signed = snapshot.get("showPadlock") is True
+        native: dict[str, Any] = {
+            "schema_version": 1,
+            "profile_id": self.profile,
+            "account_id": self.config.account_id,
+            "chat_id": conversation,
+            "message_id": message_id,
+            "contact_id": sender_id,
+            "sender_label": label,
+            **claimed_sender,
+            "encrypted_and_signed": encrypted_and_signed,
+        }
+        address = contact_address(sender.get("address"))
+        if address is not None:
+            native["sender_address"] = address
+        timestamp_sent = native_seconds(sent_timestamp)
+        if timestamp_sent is not None:
+            native["timestamp_sent"] = timestamp_sent
+        timestamp_received = native_seconds(snapshot.get("receivedTimestamp"))
+        if timestamp_received is not None:
+            native["timestamp_received"] = timestamp_received
+        conversation_facts = self.chat_facts.get(conversation)
+        if conversation_facts:
+            native.update(conversation_facts)
+        # Explicitly opted-in public projection for core's transport-neutral
+        # bridge context; arbitrary native data never crosses the boundary.
+        native["public_facts"] = {"encrypted_and_signed": encrypted_and_signed}
         return CanonicalEvent(
             event_id="chatmail:" + hashlib.sha256(identity.encode()).hexdigest(),
             event_kind="message.created",
@@ -100,20 +177,6 @@ class ChatmailCodec:
             source_native_ref=NativeRef(self.config.adapter_id, channel, reference),
             metadata=EventMetadata(
                 transport=TransportMetadata(protocol="chatmail", substrate="ip"),
-                native=NativeMetadata(
-                    data={
-                        "chatmail": {
-                            "schema_version": 1,
-                            "profile_id": self.profile,
-                            "account_id": self.config.account_id,
-                            "chat_id": conversation,
-                            "message_id": message_id,
-                            "contact_id": sender_id,
-                            "sender_label": label,
-                            **claimed_sender,
-                            "encrypted_and_signed": snapshot.get("showPadlock") is True,
-                        }
-                    }
-                ),
+                native=NativeMetadata(data={"chatmail": native}),
             ),
         )
