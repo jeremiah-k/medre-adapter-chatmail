@@ -6,12 +6,29 @@ on:
   workflow_dispatch:
     inputs:
       core_ref: # checkov:skip=CKV_GHA_7:manual qualification pin; only collaborators with write access can trigger workflow_dispatch
-        description: Exact MEDRE revision to qualify for this run (defaults to main)
+        description: MEDRE revision (defaults to MEDRE_CORE_REF variable or main)
         type: string
 permissions:
   contents: read
 jobs:
+  core-plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      sha: ${{ steps.snapshot.outputs.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: jeremiah-k/medre
+          ref: ${{ inputs.core_ref || vars.MEDRE_CORE_REF || 'main' }}
+          path: .core
+          persist-credentials: false
+      - name: Snapshot core revision
+        id: snapshot
+        run: echo "sha=$(git -C .core rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
   test:
+    needs: core-plan
     runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
@@ -26,7 +43,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: jeremiah-k/medre
-          ref: ${{ inputs.core_ref || 'cc0dbf10b2159884e953db8ef56c81a10f40fd11' }}
+          ref: ${{ needs.core-plan.outputs.sha }}
           path: .core
           persist-credentials: false
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
