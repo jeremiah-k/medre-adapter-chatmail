@@ -10,7 +10,7 @@ from medre.core.events.canonical import CanonicalEvent
 from medre.core.events.text import select_message_body
 from medre.core.rendering.attribution import (
     resolve_relay_attribution,
-    format_relay_prefix,
+    format_checked_relay_prefix,
 )
 from medre.core.rendering.relations import (
     compose_relation_text,
@@ -92,7 +92,7 @@ class ChatmailRenderer:
             source_attribution=ctx.source_attribution,
             projected_fields=projected,
         )
-        prefix = format_relay_prefix(config.relay_prefix, attr)
+        prefix = format_checked_relay_prefix(config.relay_prefix, attr)
         if prefix.formatting_error:
             raise ValueError("Invalid Chatmail relay prefix template")
         text = prefix.rendered_prefix + text
