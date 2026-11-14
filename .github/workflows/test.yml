@@ -25,7 +25,11 @@ jobs:
           persist-credentials: false
       - name: Snapshot core revision
         id: snapshot
-        run: echo "sha=$(git -C .core rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+        run: |
+          core_sha=$(git -C .core rev-parse --verify 'HEAD^{commit}')
+          [[ "$core_sha" =~ ^[0-9a-f]{40}$ ]]
+          echo "sha=$core_sha" >> "$GITHUB_OUTPUT"
+          echo "Resolved MEDRE core: $core_sha" >> "$GITHUB_STEP_SUMMARY"
 
   test:
     needs: core-plan
