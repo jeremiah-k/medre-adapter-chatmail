@@ -73,7 +73,8 @@ async def test_renderer_retains_scoped_native_reference_and_readable_fallback(co
     )
     assert result.payload["reply_native_ref"] == "profile-uuid:19"
     assert (
-        "[reply to: earlier sender's message]" in result.payload["reply_fallback_text"]
+        "[replying to: earlier sender's message]"
+        in result.payload["reply_fallback_text"]
     )
     assert result.payload["text"] == snapshot()["text"]
     assert validate_payload(result, config)[-2:] == (
@@ -131,7 +132,7 @@ async def test_renderer_falls_back_for_out_of_scope_reference(config, scope):
     ):
         assert "reply_native_ref" not in result.payload
         assert result.fallback_applied == "relation_reply"
-        assert "[reply to: earlier sender's message]" in result.payload["text"]
+        assert "[replying to: earlier sender's message]" in result.payload["text"]
     else:
         # Profile ownership cannot be established by the pure renderer.
         assert result.payload["reply_native_ref"] == "other-profile:19"
@@ -291,7 +292,7 @@ async def test_renderer_obeys_core_binding_failure(config, failure):
         enriched, rendering_context()
     )
     assert "reply_native_ref" not in result.payload
-    assert "[reply to: earlier sender's message]" in result.payload["text"]
+    assert "[replying to: earlier sender's message]" in result.payload["text"]
     assert result.fallback_applied == "relation_reply"
 
 
