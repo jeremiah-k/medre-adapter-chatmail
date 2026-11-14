@@ -39,6 +39,25 @@ async def test_native_sender_and_origin_are_per_message_with_explicit_opt_out(co
     assert "override_sender_name" not in (await disabled.render(event, ctx)).payload
 
 
+def test_source_sender_handle_carries_the_native_address(config):
+    """Attribution projects the chatmail email identity over the numeric contact ID."""
+    from medre.adapters.chatmail.metadata import project_attribution
+
+    event = ChatmailCodec(config, "profile").decode(snapshot(), timestamp=NOW)
+    projected = project_attribution(
+        event.metadata.native.data, source_transport_id=event.source_transport_id
+    )
+    assert projected["source_sender_handle"] == "alice@example.org"
+    assert projected["source_sender_id"] == "profile:contact:12"
+    bare = ChatmailCodec(config, "profile").decode(
+        snapshot(sender={"isBlocked": False, "displayName": "Alice"}), timestamp=NOW
+    )
+    degraded = project_attribution(
+        bare.metadata.native.data, source_transport_id=bare.source_transport_id
+    )
+    assert degraded["source_sender_handle"] == "profile:contact:12"
+
+
 @pytest.mark.parametrize(
     "origin",
     [

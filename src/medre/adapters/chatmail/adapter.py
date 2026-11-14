@@ -29,7 +29,7 @@ from medre.core.contracts.delivery import (
 from medre.core.ingress import IngressProvenance
 from medre.core.rendering.renderer import RenderingResult
 
-from .codec import ChatmailCodec, native_id
+from .codec import ChatmailCodec, chat_facts, native_id
 from .config import ChatmailConfig, plain_text, sender_name
 from .session import ChatmailSession, RpcCallError, SessionError
 from .state import Journal, PendingLimitError
@@ -224,11 +224,11 @@ class ChatmailAdapter(AdapterContract):
                 "Chatmail native profile changed during recovery"
             )
         self._profile = profile
-        self.codec = ChatmailCodec(self.config, profile)
         # Keep the previous snapshot intact until every native conversation is
         # validated and network I/O is successfully re-enabled.
         cursors: dict[int, int] = {}
         recovery_heads: dict[int, int] = {}
+        conversation_facts: dict[int, dict[str, object]] = {}
         for conversation in self.config.chats:
             info = await session.call("get_basic_chat_info", account, conversation)
             if (
@@ -240,6 +240,10 @@ class ChatmailAdapter(AdapterContract):
                 raise AdapterPermanentError(
                     "Chatmail destinations must be accepted groups or direct conversations with other contacts"
                 )
+            # Validated native conversation facts join every admitted event.
+            facts = chat_facts(info)
+            if facts:
+                conversation_facts[conversation] = facts
             members = await session.call("get_chat_contacts", account, conversation)
             if not any(type(member) is int and member > 9 for member in members):
                 raise AdapterPermanentError(
@@ -271,6 +275,7 @@ class ChatmailAdapter(AdapterContract):
                     )
                 cursors[conversation] = cursor
         await session.call("start_io", account)
+        self.codec = ChatmailCodec(self.config, profile, chat_facts=conversation_facts)
         self._cursors = cursors
         self._recovery_heads = recovery_heads
         self._download_requests.clear()
@@ -588,6 +593,18 @@ class ChatmailAdapter(AdapterContract):
                     )
                 state = snapshot.get("state")
                 if state in {26, 28}:
+                    # Native evidence is state-differentiated: 26 (OutDelivered)
+                    # confirms only outgoing-server handoff; recipient delivery
+                    # and reading remain unconfirmed. 28 (OutMdnRcvd) carries
+                    # a native MDN read receipt. Neither implies bridge-level
+                    # confidentiality or relay acceptance.
+                    note = (
+                        "Chatmail reports SMTP acceptance and native delivery; "
+                        "reading was confirmed by a native MDN (read receipt)"
+                        if state == 28
+                        else "Chatmail reports acceptance by the outgoing SMTP "
+                        "server; recipient delivery and reading are unconfirmed"
+                    )
                     feedback = DeferredHandoffCompleted(
                         attempt_provenance=provenance,
                         handoff=AdapterHandoffResult(
@@ -595,7 +612,7 @@ class ChatmailAdapter(AdapterContract):
                             confirmation_level="remote_service",
                             native_message_id=native_id(self._profile, row["native"]),
                             native_channel_id=str(row["chat"]),
-                            note="Chatmail reports SMTP acceptance; recipient delivery and reading are unconfirmed",
+                            note=note,
                         ),
                     )
                 elif state == 24:

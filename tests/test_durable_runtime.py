@@ -82,6 +82,25 @@ async def test_ingress_baseline_live_admission_and_checkpoint_retry(config, cont
         await adapter.stop()
 
 
+async def test_connect_validates_chat_facts_onto_ingress_events(config, context):
+    ctx, _ = context
+    session = NativeSession(config)
+    adapter = ManualIngressAdapter(config, session_factory=lambda _: session)
+    await adapter.start(ctx)
+    try:
+        session.messages[20] = snapshot()
+        await adapter._scan()
+        native = ctx.admit_inbound.call_args.args[0].metadata.native.data["chatmail"]
+        assert native["chat_type"] == "Group"
+        assert native["chat_name"] == "Bridge Group"
+        assert native["chat_protected"] is True
+        assert native["sender_address"] == "alice@example.org"
+        assert native["timestamp_sent"] == 1729200000
+        assert native["public_facts"] == {"encrypted_and_signed": True}
+    finally:
+        await adapter.stop()
+
+
 async def test_restored_cursor_recovers_offline_messages_and_holds_partial_text(
     config, context
 ):
@@ -123,15 +142,25 @@ async def test_admission_failure_does_not_advance_cursor(config, context):
 
 
 @pytest.mark.parametrize(
-    "state,expected",
+    "state,expected,note",
     [
-        (26, DeferredHandoffCompleted),
-        (28, DeferredHandoffCompleted),
-        (24, DeferredHandoffFailed),
+        (
+            26,
+            DeferredHandoffCompleted,
+            "Chatmail reports acceptance by the outgoing SMTP server; "
+            "recipient delivery and reading are unconfirmed",
+        ),
+        (
+            28,
+            DeferredHandoffCompleted,
+            "Chatmail reports SMTP acceptance and native delivery; reading was "
+            "confirmed by a native MDN (read receipt)",
+        ),
+        (24, DeferredHandoffFailed, None),
     ],
 )
 async def test_delivery_reports_only_native_terminal_evidence(
-    config, context, state, expected
+    config, context, state, expected, note
 ):
     ctx, _ = context
     session = NativeSession(config)
@@ -155,6 +184,9 @@ async def test_delivery_reports_only_native_terminal_evidence(
         assert feedback.attempt_provenance == attempt()
         if state in {26, 28}:
             assert feedback.handoff.confirmation_level == "remote_service"
+            # 26 confirms outgoing SMTP-server acceptance only; recipient
+            # delivery and reading are unconfirmed. 28 carries a native MDN.
+            assert feedback.handoff.note == note
         assert not adapter.journal.rows()
     finally:
         await adapter.stop()

@@ -20,6 +20,20 @@ IDs and native references MUST include the profile identity, preventing local ID
 reuse from binding evidence from different profiles. Email addresses MUST NOT be
 used as contact identity lookup keys.
 
+Supplied native facts are recorded, not discarded. Each admitted event's native
+namespace carries the contact's email address as `sender_address` when the
+snapshot supplies a usable one, the native send and receive times as
+`timestamp_sent` and `timestamp_received` in unix seconds, and the validated
+conversation facts (`chat_type`, `chat_name`, `chat_protected`) observed at
+connection setup from the RPC's `BasicChat` shape. Malformed, padded,
+whitespace-bearing, nonpositive or oversized values MUST be omitted rather than
+rewritten or guessed. Attribution projects `sender_address` as
+`source_sender_handle` (the platform's actual identity) and degrades to the
+profile-scoped transport ID when no usable address exists. A bounded
+`public_facts` projection — currently `encrypted_and_signed` only — is the
+single opted-in source of chatmail facts for core's transport-neutral bridge
+context; arbitrary native data MUST NOT cross that boundary.
+
 First-use checkpoints baseline existing chat history before native I/O starts.
 On restart, messages beyond the durable cursor are admitted with recovered
 provenance; subsequent arrivals use live provenance. Native timestamps are
@@ -69,9 +83,14 @@ absent, and MUST reject contradictory event/target provenance.
 The private SQLite journal bounds queued attempts using `max_pending`. Admission
 returns `deferred` with `local_queue` confirmation and no native message ID. The
 worker persists a submission claim before invoking native send. A correlated
-native message remains pending until the server reports state 26 or 28, which
-permits a `remote_service` handoff fact for SMTP acceptance. State 24 produces
-permanent failure. These facts MUST NOT imply recipient delivery or reading.
+native message remains pending until the server reports state 26 or 28, each of
+which permits a `remote_service` handoff fact for SMTP acceptance with
+state-differentiated evidence: state 26 (`OutDelivered`) confirms acceptance
+by the outgoing SMTP server only; recipient delivery and reading are unconfirmed.
+State 28 (`OutMdnRcvd`) additionally carries a native MDN (read receipt) and
+reports reading as confirmed by that MDN. State 24
+produces permanent failure. These facts MUST NOT imply more than their native
+state, bridge confidentiality, or relay acceptance.
 
 Exact provenance remains associated with the native ID until core acknowledges
 feedback. Feedback failure MUST NOT resubmit the native message. Recovery polls
@@ -98,6 +117,12 @@ readable fallback for unavailable targets. Threads remain fallback-only. Each
 instance exposes its configured text budget.
 Attachments, native mutations, read receipt forwarding, typing notifications,
 presence, puppeting and bridge-wide encryption are not advertised.
+`metadata_fields` stays false: the adapter validates renderer payloads but has
+no native channel that transmits structured metadata fields, and core's
+bridge-context copy of `public_facts` is not a chatmail transport capability.
+`identity_encryption` stays false: chatmail identities are native email
+addresses managed by Delta Chat's key-contact model, which is not an
+adapter-level identity-encryption capability MEDRE can report.
 
 Failed partial downloads are retried at most once per polling interval; native
 `InProgress` work is not resubmitted. Profile CLI commands honor environment
@@ -146,8 +171,11 @@ profile-scoped contact identity and `sender_label`. They MUST NOT grant original
 sender identity, encryption, relation binding, or delivery authority.
 
 This carrier conveys native sender/origin presentation, not the complete shared
-bridge-context object or canonical event references. SMTP acceptance still yields
-only `remote_service` confirmation; no recipient delivery or reading is implied.
+bridge-context object or canonical event references. SMTP acceptance still
+yields only `remote_service` confirmation, with note evidence differentiated by
+native state: outgoing-server accepted, recipient delivery and reading unconfirmed
+(26), or MDN-confirmed reading (28);
+neither implies relay acceptance or bridge confidentiality.
 
 ## Native health notifications
 

@@ -25,9 +25,15 @@ def project_attribution(
     label = native.get("sender_label") or sender
     if compact and isinstance(label, str):
         label = label.replace(" ", "")
+    # The native contact address is the platform's actual identity; the
+    # transport ID is only a profile-scoped numeric contact reference.
+    # Absent or unusable addresses degrade to the transport ID.
+    handle = native.get("sender_address")
+    if not isinstance(handle, str) or not handle:
+        handle = sender
     return {
         "source_sender_id": sender,
         "source_sender_label": label,
         "source_sender_short_label": label,
-        "source_sender_handle": sender,
+        "source_sender_handle": handle,
     }

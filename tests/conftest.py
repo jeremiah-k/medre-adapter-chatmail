@@ -41,7 +41,14 @@ def snapshot(message_id=20, **updates):
         "isEdited": False,
         "text": "Hello <Chatmail> & 世界",
         "showPadlock": True,
-        "sender": {"isBlocked": False, "displayName": "Alice"},
+        "timestamp": 1729200000,
+        "sortTimestamp": 1729200001,
+        "receivedTimestamp": 1729200002,
+        "sender": {
+            "isBlocked": False,
+            "displayName": "Alice",
+            "address": "alice@example.org",
+        },
         **updates,
     }
 
@@ -147,6 +154,9 @@ class NativeSession:
             return "/native/profile-uuid/dc.db-blobs"
         if name == "get_basic_chat_info":
             return {
+                "id": args[1],
+                "name": "Bridge Group",
+                "isEncrypted": True,
                 "isContactRequest": False,
                 "isDeviceChat": False,
                 "isSelfTalk": False,
