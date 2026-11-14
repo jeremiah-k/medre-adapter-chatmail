@@ -85,9 +85,10 @@ returns `deferred` with `local_queue` confirmation and no native message ID. The
 worker persists a submission claim before invoking native send. A correlated
 native message remains pending until the server reports state 26 or 28, each of
 which permits a `remote_service` handoff fact for SMTP acceptance with
-state-differentiated evidence: state 26 (`OutDelivered`) reports native delivery
-while reading remains unconfirmed; state 28 (`OutMdnRcvd`) additionally carries a
-native MDN (read receipt) and reports reading as confirmed by that MDN. State 24
+state-differentiated evidence: state 26 (`OutDelivered`) confirms acceptance
+by the outgoing SMTP server only; recipient delivery and reading are unconfirmed.
+State 28 (`OutMdnRcvd`) additionally carries a native MDN (read receipt) and
+reports reading as confirmed by that MDN. State 24
 produces permanent failure. These facts MUST NOT imply more than their native
 state, bridge confidentiality, or relay acceptance.
 
@@ -172,7 +173,8 @@ sender identity, encryption, relation binding, or delivery authority.
 This carrier conveys native sender/origin presentation, not the complete shared
 bridge-context object or canonical event references. SMTP acceptance still
 yields only `remote_service` confirmation, with note evidence differentiated by
-native state: delivered-unconfirmed-read (26) or MDN-confirmed reading (28);
+native state: outgoing-server accepted, recipient delivery and reading unconfirmed
+(26), or MDN-confirmed reading (28);
 neither implies relay acceptance or bridge confidentiality.
 
 ## Native health notifications

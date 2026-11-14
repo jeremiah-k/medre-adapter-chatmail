@@ -594,15 +594,16 @@ class ChatmailAdapter(AdapterContract):
                 state = snapshot.get("state")
                 if state in {26, 28}:
                     # Native evidence is state-differentiated: 26 (OutDelivered)
-                    # leaves reading unconfirmed, while 28 (OutMdnRcvd) carries
+                    # confirms only outgoing-server handoff; recipient delivery
+                    # and reading remain unconfirmed. 28 (OutMdnRcvd) carries
                     # a native MDN read receipt. Neither implies bridge-level
                     # confidentiality or relay acceptance.
                     note = (
                         "Chatmail reports SMTP acceptance and native delivery; "
                         "reading was confirmed by a native MDN (read receipt)"
                         if state == 28
-                        else "Chatmail reports SMTP acceptance and native delivery; "
-                        "reading is unconfirmed"
+                        else "Chatmail reports acceptance by the outgoing SMTP "
+                        "server; recipient delivery and reading are unconfirmed"
                     )
                     feedback = DeferredHandoffCompleted(
                         attempt_provenance=provenance,

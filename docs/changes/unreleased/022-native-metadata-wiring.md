@@ -11,7 +11,8 @@ connection setup keeps the validated conversation facts (`chat_type`,
 values are omitted, never guessed.
 
 Delivery feedback notes are now state-differentiated: state 26 (`OutDelivered`)
-reports native delivery with reading unconfirmed, while state 28 (`OutMdnRcvd`)
+reports outgoing SMTP-server acceptance with recipient delivery and reading
+unconfirmed, while state 28 (`OutMdnRcvd`)
 reports reading as confirmed by a native MDN (read receipt); both remain
 `remote_service` SMTP-acceptance evidence and imply no relay acceptance or
 bridge confidentiality. A bounded opted-in `public_facts` projection (currently

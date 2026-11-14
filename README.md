@@ -123,8 +123,9 @@ Neither a valid config nor a nonempty route plan proves peer delivery.
 rejected by fake smoke. An initial `deferred` result with `local_queue`
 confirmation records retention in the private pending-delivery journal only;
 SMTP handoff is pending. Later correlated `remote_service` feedback confirms
-SMTP acceptance, with notes differentiated by native state: delivered with
-reading unconfirmed, or reading confirmed by a native MDN (read receipt).
+SMTP-server acceptance, with notes differentiated by native state: the outgoing
+server accepted the message but recipient delivery and reading are unconfirmed,
+or a native MDN (read receipt) confirms reading.
 
 ## Configuration reference
 
@@ -157,8 +158,8 @@ backing up state.
 - Keep partial text messages pending. Exclude self echoes, blocked contacts,
   informational controls, edits and unsupported media from fresh-message ingress.
 - Return local queue admission as deferred delivery. Report SMTP acceptance only
-  after the native core reports its sent state; notes differentiate native
-  delivery (reading unconfirmed) from MDN-confirmed reading. Neither claims
+  after the native core confirms outgoing-server acceptance; recipient delivery
+  and reading remain unconfirmed without separate MDN evidence. Neither claims
   relay acceptance or bridge confidentiality.
 - Retain exact attempt/native-ID correlation until core accepts delivery feedback.
   Recover correlated native jobs without resending. Abandon unsent or uncertain

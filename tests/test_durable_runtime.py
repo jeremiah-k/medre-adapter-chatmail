@@ -147,7 +147,8 @@ async def test_admission_failure_does_not_advance_cursor(config, context):
         (
             26,
             DeferredHandoffCompleted,
-            "Chatmail reports SMTP acceptance and native delivery; reading is unconfirmed",
+            "Chatmail reports acceptance by the outgoing SMTP server; "
+            "recipient delivery and reading are unconfirmed",
         ),
         (
             28,
@@ -183,8 +184,8 @@ async def test_delivery_reports_only_native_terminal_evidence(
         assert feedback.attempt_provenance == attempt()
         if state in {26, 28}:
             assert feedback.handoff.confirmation_level == "remote_service"
-            # Native states carry differentiated evidence: 26 is OutDelivered
-            # (read unconfirmed), 28 is OutMdnRcvd (read confirmed by MDN).
+            # 26 confirms outgoing SMTP-server acceptance only; recipient
+            # delivery and reading are unconfirmed. 28 carries a native MDN.
             assert feedback.handoff.note == note
         assert not adapter.journal.rows()
     finally:
