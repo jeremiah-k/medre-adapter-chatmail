@@ -13,7 +13,7 @@ from medre.core.rendering.attribution import (
     format_relay_prefix,
 )
 from medre.core.rendering.relations import (
-    degrade_relations_inline,
+    compose_relation_text,
     destination_native_message_id,
 )
 from medre.core.rendering.renderer import RenderingContext, RenderingResult
@@ -72,7 +72,7 @@ class ChatmailRenderer:
             )
             if candidate is not None and plain_text(candidate):
                 reply_id = candidate
-        text = degrade_relations_inline(
+        text = compose_relation_text(
             event, text, represented=(replies[0],) if reply_id is not None else ()
         )
         if not text.strip():
@@ -112,7 +112,7 @@ class ChatmailRenderer:
         # The active profile and native chat are checked again before sending.
         reply_fallback_applied = False
         if replies and not fallback:
-            fallback_body = prefix.rendered_prefix + degrade_relations_inline(
+            fallback_body = prefix.rendered_prefix + compose_relation_text(
                 event, select_message_body(event.payload)
             )
             # Both outcomes must fit before durable admission. Never truncate
