@@ -193,7 +193,8 @@ uv run --no-sync pytest -q -m chatmail_sdk
 The default tier excludes native SDK and live tests. The SDK tier runs the actual
 pinned RPC client and server against temporary local profiles without an external
 mail service. CI runs both tiers on Python 3.11–3.14 and qualifies the adapter
-against core main; workflow dispatch accepts an exact candidate core revision.
+against core `main`, resolved once per run. Keep `MEDRE_CORE_REF` unset;
+workflow dispatch accepts an exact candidate core revision.
 The run summary records both resolved commit IDs. SDK constraints are exported
 from core's lock without installing private core test helpers into this provider.
 

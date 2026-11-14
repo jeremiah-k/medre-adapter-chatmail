@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from medre.core.rendering.attribution import validate_relay_prefix
+
 import math
 import re
 import unicodedata
@@ -123,6 +125,7 @@ class ChatmailConfig:
             value = getattr(self, name)
             if type(value) is not int or value <= 0:
                 raise ValueError(f"{name} must be a positive integer")
+        validate_relay_prefix(self.relay_prefix)
         return self
 
     def destination(self, channel: str | None) -> int:

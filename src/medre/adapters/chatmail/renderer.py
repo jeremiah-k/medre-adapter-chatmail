@@ -9,10 +9,13 @@ from medre.adapters.metadata import project_source_fields
 from medre.core.events.canonical import CanonicalEvent
 from medre.core.events.text import select_message_body
 from medre.core.rendering.attribution import (
-    build_relay_attribution,
-    format_relay_prefix,
+    resolve_relay_attribution,
+    format_checked_relay_prefix,
 )
-from medre.core.rendering.relations import degrade_relations_inline
+from medre.core.rendering.relations import (
+    compose_relation_text,
+    destination_native_message_id,
+)
 from medre.core.rendering.renderer import RenderingContext, RenderingResult
 
 from .config import ChatmailConfig, plain_text, sender_name
@@ -61,14 +64,20 @@ class ChatmailRenderer:
         destination = config.destination(ctx.target_channel)
         text = select_message_body(event.payload)
         fallback = ctx.delivery_strategy == "fallback_text"
-        if fallback:
-            text = degrade_relations_inline(event, text)
+        replies = [rel for rel in event.relations if rel.relation_type == "reply"]
+        reply_id = None
+        if not fallback and len(replies) == 1 and replies[0].target_event_id:
+            candidate = destination_native_message_id(
+                replies[0], ctx.target_adapter, ctx.target_channel, require_fact=True
+            )
+            if candidate is not None and plain_text(candidate):
+                reply_id = candidate
+        text = compose_relation_text(
+            event, text, represented=(replies[0],) if reply_id is not None else ()
+        )
         if not text.strip():
             raise ValueError("Chatmail message body must not be empty")
         attr_config = self.source_attribution.get(event.source_adapter)
-        label = ctx.source_origin_label
-        if label is None and attr_config is not None:
-            label = attr_config.origin_label
         native = dict(event.metadata.native.data) if event.metadata.native else {}
         projected = project_source_fields(
             native,
@@ -76,10 +85,14 @@ class ChatmailRenderer:
             source_transport_id=event.source_transport_id,
             platform_hint=getattr(attr_config, "platform", None),
         )
-        attr = build_relay_attribution(
-            event, source_origin_label=label, projected_fields=projected
+        attr = resolve_relay_attribution(
+            event,
+            source_origin_label=ctx.source_origin_label,
+            configured_origin_label=getattr(attr_config, "origin_label", None),
+            source_attribution=ctx.source_attribution,
+            projected_fields=projected,
         )
-        prefix = format_relay_prefix(config.relay_prefix, attr)
+        prefix = format_checked_relay_prefix(config.relay_prefix, attr)
         if prefix.formatting_error:
             raise ValueError("Invalid Chatmail relay prefix template")
         text = prefix.rendered_prefix + text
@@ -97,10 +110,9 @@ class ChatmailRenderer:
         # Core binds stored references to this exact destination. A relation's
         # own native ref cannot override an ambiguous or unavailable binding.
         # The active profile and native chat are checked again before sending.
-        replies = [rel for rel in event.relations if rel.relation_type == "reply"]
         reply_fallback_applied = False
         if replies and not fallback:
-            fallback_body = prefix.rendered_prefix + degrade_relations_inline(
+            fallback_body = prefix.rendered_prefix + compose_relation_text(
                 event, select_message_body(event.payload)
             )
             # Both outcomes must fit before durable admission. Never truncate
@@ -116,17 +128,8 @@ class ChatmailRenderer:
                 raise ValueError(
                     "Chatmail reply fallback exceeds the destination budget"
                 )
-            fact = replies[0].target_fact if len(replies) == 1 else None
-            if (
-                fact is not None
-                and fact.status == "bound"
-                and fact.adapter == ctx.target_adapter
-                and fact.native_channel_id == ctx.target_channel
-                and plain_text(fact.native_message_id)
-                and fact.native_message_id
-                and replies[0].target_event_id
-            ):
-                payload["reply_native_ref"] = fact.native_message_id
+            if reply_id is not None:
+                payload["reply_native_ref"] = reply_id
                 payload["reply_fallback_text"] = fallback_body
             else:
                 payload["text"] = fallback_body
@@ -144,7 +147,21 @@ class ChatmailRenderer:
             target_adapter=ctx.target_adapter,
             target_channel=ctx.target_channel,
             payload=payload,
-            metadata={"chatmail": {"format": "plain", "attribution": "relay"}},
+            metadata={
+                "chatmail": {"format": "plain", "attribution": "relay"},
+                **(
+                    {
+                        "relay_prefix_template": prefix.template_used,
+                        "relay_prefix_rendered": prefix.rendered_prefix,
+                        "relay_prefix_variables_used": prefix.variables_used,
+                        "relay_prefix_missing_variables": prefix.missing_variables,
+                        "relay_prefix_unknown_variables": prefix.unknown_variables,
+                        "relay_prefix_formatting_error": prefix.formatting_error,
+                    }
+                    if config.relay_prefix
+                    else {}
+                ),
+            },
             fallback_applied=(
                 "strategy_fallback_text"
                 if fallback
