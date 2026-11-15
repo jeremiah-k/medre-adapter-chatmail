@@ -12,8 +12,8 @@ intentional toolchain refresh; review the pin changes, then rerun both checks.
 Tool versions are owned by `.trunk/trunk.yaml`;
 Python policy is owned by `pyproject.toml`. Renovate tracks the inline
 upstream-source annotations on external pins; preserve them when editing. The
-formatter targets the package's minimum supported Python. Preserve frozen schema bytes; local `.zcode/`,
-`.core/`, reports and caches are ignored.
+formatter targets the package's minimum supported Python. Preserve frozen
+schema bytes; local `.zcode/`, `.core/`, reports and caches are ignored.
 
 For tests, use a MEDRE source checkout and its locked uv development environment:
 
