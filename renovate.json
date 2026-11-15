@@ -1,26 +1,72 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:best-practices"],
+  "enabledManagers": [
+    "pep621",
+    "github-actions",
+    "dockerfile",
+    "docker-compose",
+    "asdf",
+    "custom.regex"
+  ],
+  "timezone": "America/Chicago",
+  "dependencyDashboard": true,
+  "automerge": false,
   "packageRules": [
-    {
-      "description": "medre core is consumed from the Git deployment project or the CI checkout, not PyPI; suppress the pypi lookup for it",
-      "matchDatasources": ["pypi"],
-      "matchPackageNames": ["medre"],
-      "enabled": false
-    },
     {
       "description": "Qualify the RPC client and native server as one version pair",
       "matchPackageNames": ["deltachat-rpc-client", "deltachat-rpc-server"],
       "groupName": "Chatmail RPC client and server"
+    },
+    {
+      "description": "Keep Python support and deliberate CI minors under project review",
+      "matchDepTypes": ["requires-python", "uses-with"],
+      "matchPackageNames": ["python"],
+      "enabled": false
+    },
+    {
+      "description": "Preserve the supported core compatibility range",
+      "matchPackageNames": ["medre"],
+      "rangeStrategy": "bump"
+    },
+    {
+      "description": "Review coordinated tool upgrades after the shared quality gate",
+      "matchFileNames": [".trunk/trunk.yaml"],
+      "groupName": "Trunk toolchain",
+      "automerge": false
+    },
+    {
+      "description": "Review CLI releases from the launcher manifest without a release timestamp",
+      "matchDatasources": ["custom.trunk-cli"],
+      "minimumReleaseAge": "0 days",
+      "automerge": false
     }
   ],
-  "regexManagers": [
+  "customDatasources": {
+    "trunk-cli": {
+      "defaultRegistryUrlTemplate": "https://trunk.io/releases/latest",
+      "format": "yaml",
+      "transformTemplates": ["{\"releases\":[{\"version\": $string(version)}]}"]
+    }
+  },
+  "customManagers": [
     {
       "description": "Keep the license disclosure pinned requirement current with pyproject",
-      "fileMatch": ["^DEPENDENCY_LICENSES\\.md$"],
       "matchStrings": [
         "`(?<depName>[A-Za-z0-9_.-]+)(?:\\[[a-z,]+\\])?==(?<currentValue>[^`\\s]+)`"
       ],
-      "datasourceTemplate": "pypi"
+      "datasourceTemplate": "pypi",
+      "customType": "regex",
+      "managerFilePatterns": ["/^DEPENDENCY_LICENSES\\.md$/"]
+    },
+    {
+      "customType": "regex",
+      "description": "Track Trunk CLI, plugins and linters from their declared upstream package sources",
+      "managerFilePatterns": ["/^\\.trunk/trunk\\.yaml$/"],
+      "matchStrings": [
+        "(?:@|version:\\s+|ref:\\s+v?)(?<currentValue>[0-9][^\\s]*)\\s+# renovate: datasource=(?<datasource>[a-z.-]+) depName=(?<depName>[^\\s]+)"
+      ],
+      "extractVersionTemplate": "^v?(?<version>.*)$"
     }
   ]
 }

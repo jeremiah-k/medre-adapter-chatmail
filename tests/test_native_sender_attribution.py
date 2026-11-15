@@ -5,21 +5,20 @@ import json
 import sqlite3
 from contextlib import closing
 from dataclasses import replace
+from pathlib import Path
 
 import msgspec
 import pytest
+from conftest import NOW, NativeSession, attempt, rendered, snapshot
 from jsonschema import Draft202012Validator
-from pathlib import Path
+from medre.core.contracts.adapter import AdapterPermanentError
+from medre.core.rendering.renderer import RenderingContext
 
 from medre.adapters.chatmail.adapter import ChatmailAdapter, validate_payload
 from medre.adapters.chatmail.codec import ChatmailCodec
 from medre.adapters.chatmail.config import sender_name
 from medre.adapters.chatmail.renderer import ChatmailRenderer
 from medre.adapters.chatmail.state import Journal
-from medre.core.contracts.adapter import AdapterPermanentError
-from medre.core.rendering.renderer import RenderingContext
-
-from conftest import NOW, NativeSession, attempt, rendered, snapshot
 
 
 async def test_native_sender_and_origin_are_per_message_with_explicit_opt_out(config):

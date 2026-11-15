@@ -1,7 +1,5 @@
+# Prettier owns YAML presentation; retain semantic checks here.
 rules:
   key-duplicates: {}
   octal-values:
     forbid-implicit-octal: true
-  # quoted-strings (core's only-when-needed profile) is deliberately not
-  # enabled: the scheduled workflow's cron value is quoted by GitHub
-  # convention and this rule would flag it.

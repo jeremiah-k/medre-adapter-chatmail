@@ -5,13 +5,12 @@ from dataclasses import replace
 from types import SimpleNamespace
 
 import pytest
+from conftest import NOW, NativeSession, attempt, snapshot
 
 from medre.adapters.chatmail import session as boundary
 from medre.adapters.chatmail.adapter import ChatmailAdapter
 from medre.adapters.chatmail.codec import ChatmailCodec
 from medre.adapters.chatmail.state import Journal, ProfileLease
-
-from conftest import NativeSession, attempt, snapshot, NOW
 
 
 class ManualAdapter(ChatmailAdapter):

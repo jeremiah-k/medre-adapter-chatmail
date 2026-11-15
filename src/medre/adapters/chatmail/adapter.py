@@ -7,10 +7,8 @@ import json
 from collections.abc import Callable, Mapping
 from dataclasses import replace
 from pathlib import Path
-from typing import Any
 from time import monotonic
-
-from medre.core.supervision.diagnostic_contract import COMMON_DIAGNOSTIC_KEYS
+from typing import Any
 
 from medre.core.contracts.adapter import (
     AdapterCapabilities,
@@ -28,6 +26,7 @@ from medre.core.contracts.delivery import (
 )
 from medre.core.ingress import IngressProvenance
 from medre.core.rendering.renderer import RenderingResult
+from medre.core.supervision.diagnostic_contract import COMMON_DIAGNOSTIC_KEYS
 
 from .codec import ChatmailCodec, chat_facts, native_id
 from .config import ChatmailConfig, plain_text, sender_name

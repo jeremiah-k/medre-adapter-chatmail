@@ -3,10 +3,10 @@
 import asyncio
 
 import pytest
+from conftest import NativeSession, wait_until
 
 from medre.adapters.chatmail.adapter import ChatmailAdapter
 from medre.adapters.chatmail.session import SessionError
-from conftest import NativeSession, wait_until
 
 
 async def test_connectivity_loss_and_recovery_publish_without_probe(config, context):

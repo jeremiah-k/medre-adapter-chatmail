@@ -70,3 +70,6 @@ follow_imports = "silent"
 [[tool.mypy.overrides]]
 module = ["deltachat_rpc_client", "deltachat_rpc_client.*"]
 ignore_missing_imports = true
+
+[tool.isort]
+profile = "black"

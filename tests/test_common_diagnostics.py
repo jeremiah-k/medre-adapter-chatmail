@@ -3,13 +3,13 @@
 import json
 
 import pytest
-
-from medre.adapters.chatmail.adapter import ChatmailAdapter
-from medre.adapters.chatmail.fake import FakeChatmailAdapter
 from medre.core.supervision.diagnostic_contract import (
     COMMON_DIAGNOSTIC_KEYS,
     normalize_diagnostics,
 )
+
+from medre.adapters.chatmail.adapter import ChatmailAdapter
+from medre.adapters.chatmail.fake import FakeChatmailAdapter
 
 
 def test_real_diagnostics_preserve_reported_native_health(config):

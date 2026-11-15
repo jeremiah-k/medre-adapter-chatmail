@@ -5,10 +5,10 @@ import subprocess
 import sys
 
 import pytest
+from medre.cli import contrib
 
 from medre.adapters.chatmail import cli
 from medre.adapters.chatmail.plugin import adapter_spec
-from medre.cli import contrib
 
 
 def core_parser(monkeypatch):

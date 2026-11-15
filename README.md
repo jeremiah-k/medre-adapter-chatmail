@@ -181,14 +181,9 @@ See the [provider contract](docs/spec/chatmail.md) and
 
 ## Develop and test
 
-Create an isolated environment from checkouts at any paths:
-
-```bash
-uv venv
-uv pip install -e /absolute/path/to/medre -e '.[test]'
-uv run --no-sync pytest -q
-uv run --no-sync pytest -q -m chatmail_sdk
-```
+Use the locked uv development workflow in [contributing](CONTRIBUTING.md).
+It supports core and provider checkouts at arbitrary locations; select the
+native SDK tier explicitly after synchronization.
 
 The default tier excludes native SDK and live tests. The SDK tier runs the actual
 pinned RPC client and server against temporary local profiles without an external
@@ -210,3 +205,8 @@ see the original sender and origin as a message display name while the bridge
 account and contact profile remain unchanged. Set `native_sender_attribution: false`
 to keep only the configured body prefix. See [the provider contract](docs/spec/chatmail.md#per-message-native-attribution)
 and [the two-receipt native qualification](docs/evidence/native-sender-2026-10-25.json).
+
+## Development tooling
+
+See [contributing](CONTRIBUTING.md) for the shared Trunk quality gate and uv-based
+editable development workflow.

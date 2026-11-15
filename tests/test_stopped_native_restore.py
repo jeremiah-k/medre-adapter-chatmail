@@ -40,14 +40,15 @@ def test_native_account_lock_capture_and_reopen(tmp_path, monkeypatch):
     client = pytest.importorskip("deltachat_rpc_client")
     server = pytest.importorskip("deltachat_rpc_server")
 
-    from medre.adapters.chatmail.plugin import adapter_spec
-    from medre.adapters.chatmail.state import Journal, ProfileLease
-    from medre.adapters.chatmail.stopped_declaration import declaration
     from medre.maintenance import stopped_declare as maintenance
     from medre.maintenance.stopped_snapshot import (
         restore_stopped_snapshot,
         verify_stopped_snapshot,
     )
+
+    from medre.adapters.chatmail.plugin import adapter_spec
+    from medre.adapters.chatmail.state import Journal, ProfileLease
+    from medre.adapters.chatmail.stopped_declaration import declaration
 
     root = tmp_path / "state"
     accounts = root / "accounts"

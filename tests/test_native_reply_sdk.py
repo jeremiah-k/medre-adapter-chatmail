@@ -4,7 +4,6 @@ from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
-
 from medre.testing.sdk_contract import assert_installed_sdk_pins
 
 pytestmark = pytest.mark.chatmail_sdk

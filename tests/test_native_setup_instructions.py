@@ -12,11 +12,11 @@ import sys
 from pathlib import Path
 
 import pytest
+from medre.cli import contrib
 
 from medre import adapter_spec as registration
 from medre.adapters.chatmail import cli, plugin
 from medre.adapters.chatmail.plugin import adapter_spec
-from medre.cli import contrib
 
 _README_PATH = Path(__file__).resolve().parents[1] / "README.md"
 

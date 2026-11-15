@@ -10,7 +10,6 @@ from pathlib import Path
 from typing import Any
 
 import msgspec
-
 from medre.core.events.delivery import DeliveryAttemptProvenance
 
 

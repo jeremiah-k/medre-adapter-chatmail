@@ -7,10 +7,10 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
-
 from medre.core.contracts.adapter import AdapterContext
 from medre.core.events.delivery import DeliveryAttemptProvenance
 from medre.core.rendering.renderer import RenderingResult
+
 from medre.adapters.chatmail.config import ChatmailConfig
 
 NOW = datetime(2026, 10, 18, tzinfo=timezone.utc)

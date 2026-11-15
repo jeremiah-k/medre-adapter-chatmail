@@ -5,17 +5,16 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
-
+from conftest import NativeSession, attempt, rendered, snapshot, wait_until
 from medre.core.contracts.adapter import AdapterPermanentError, AdapterSendError
 from medre.core.contracts.delivery import (
     DeferredHandoffCompleted,
     DeferredHandoffFailed,
 )
+
 from medre.adapters.chatmail.adapter import ChatmailAdapter
 from medre.adapters.chatmail.session import RpcCallError, SessionError
 from medre.adapters.chatmail.state import Journal, PendingLimitError, ProfileLease
-
-from conftest import NativeSession, attempt, rendered, snapshot, wait_until
 
 
 class ManualIngressAdapter(ChatmailAdapter):
