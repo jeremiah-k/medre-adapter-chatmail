@@ -4,17 +4,12 @@ import sqlite3
 from dataclasses import replace
 from types import SimpleNamespace
 
-from medre.core.events import EventMetadata
 import msgspec
 import pytest
-
-from medre.adapters.chatmail.adapter import ChatmailAdapter, validate_payload
-from medre.adapters.chatmail.codec import ChatmailCodec
-from medre.adapters.chatmail.renderer import ChatmailRenderer
-from medre.adapters.chatmail.session import RpcCallError
-from medre.adapters.chatmail.state import Journal
+from conftest import NOW, NativeSession, attempt, rendered, snapshot
 from medre.core.contracts.adapter import AdapterPermanentError
 from medre.core.contracts.delivery import DeferredHandoffCompleted
+from medre.core.events import EventMetadata
 from medre.core.events.canonical import (
     EventRelation,
     NativeMessageRef,
@@ -24,7 +19,11 @@ from medre.core.events.canonical import (
 from medre.core.planning.relation_enricher import RelationEnricher
 from medre.core.rendering.renderer import RenderingContext
 
-from conftest import NOW, NativeSession, attempt, rendered, snapshot
+from medre.adapters.chatmail.adapter import ChatmailAdapter, validate_payload
+from medre.adapters.chatmail.codec import ChatmailCodec
+from medre.adapters.chatmail.renderer import ChatmailRenderer
+from medre.adapters.chatmail.session import RpcCallError
+from medre.adapters.chatmail.state import Journal
 
 
 class ManualAdapter(ChatmailAdapter):

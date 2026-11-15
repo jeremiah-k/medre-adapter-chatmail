@@ -5,17 +5,16 @@ from dataclasses import fields, replace
 from pathlib import Path
 
 import pytest
-
+from conftest import NOW, rendered, snapshot
 from medre.config.loader import parse_runtime_config
 from medre.config.paths import resolve
 from medre.core.rendering.renderer import RenderingContext
+
 from medre.adapters.chatmail.codec import ChatmailCodec
 from medre.adapters.chatmail.config import ChatmailConfig, chat_id, prepare_config
 from medre.adapters.chatmail.fake import FakeChatmailAdapter
 from medre.adapters.chatmail.metadata import native_namespace, versioned
 from medre.adapters.chatmail.renderer import ChatmailRenderer
-
-from conftest import NOW, snapshot, rendered
 
 
 @pytest.mark.parametrize(
@@ -246,7 +245,7 @@ async def test_renderer_preserves_text_and_refuses_unknown_kinds_and_budgets(con
 
 async def test_fake_uses_rendered_validation_and_bounded_history(config, context):
     adapter = FakeChatmailAdapter("mail", config)
-    from medre.core.contracts.adapter import AdapterSendError, AdapterPermanentError
+    from medre.core.contracts.adapter import AdapterPermanentError, AdapterSendError
 
     with pytest.raises(AdapterSendError):
         await adapter.deliver(rendered())
@@ -265,8 +264,8 @@ async def test_fake_uses_rendered_validation_and_bounded_history(config, context
 
 
 def test_schemas_follow_configuration_and_native_shapes(config):
-    from jsonschema import Draft202012Validator
     import msgspec
+    from jsonschema import Draft202012Validator
 
     root = Path(__file__).parents[1] / "docs/schemas"
     schema = json.loads((root / "config.schema.json").read_text())
@@ -286,6 +285,7 @@ def test_editor_schema_accepts_actual_sample_adapter_block():
     from pathlib import Path
 
     from jsonschema import Draft202012Validator
+
     from medre.adapters.chatmail.sample import sample_config
 
     schema = json.loads(

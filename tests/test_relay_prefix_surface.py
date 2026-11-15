@@ -3,13 +3,12 @@
 from dataclasses import replace
 
 import pytest
+from conftest import NOW, snapshot
+from medre.core.rendering.renderer import RenderingContext
 
 from medre.adapters.chatmail.codec import ChatmailCodec
 from medre.adapters.chatmail.config import ChatmailConfig
 from medre.adapters.chatmail.renderer import ChatmailRenderer
-from medre.core.rendering.renderer import RenderingContext
-
-from conftest import NOW, snapshot
 
 
 def direct_context(origin=None):

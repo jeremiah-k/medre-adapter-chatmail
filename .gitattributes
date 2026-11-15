@@ -1,0 +1,4 @@
+* text=auto eol=lf
+
+# Preserve frozen schema blob bytes.
+docs/schemas/** -text

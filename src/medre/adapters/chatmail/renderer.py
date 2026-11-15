@@ -9,8 +9,8 @@ from medre.adapters.metadata import project_source_fields
 from medre.core.events.canonical import CanonicalEvent
 from medre.core.events.text import select_message_body
 from medre.core.rendering.attribution import (
-    resolve_relay_attribution,
     format_checked_relay_prefix,
+    resolve_relay_attribution,
 )
 from medre.core.rendering.relations import (
     compose_relation_text,

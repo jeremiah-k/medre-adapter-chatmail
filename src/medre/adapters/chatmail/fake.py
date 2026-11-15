@@ -3,8 +3,6 @@
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from medre.core.supervision.diagnostic_contract import COMMON_DIAGNOSTIC_KEYS
-
 from medre.core.contracts.adapter import (
     AdapterContext,
     AdapterHandoffResult,
@@ -13,6 +11,7 @@ from medre.core.contracts.adapter import (
 )
 from medre.core.events.canonical import CanonicalEvent
 from medre.core.rendering.renderer import RenderingResult
+from medre.core.supervision.diagnostic_contract import COMMON_DIAGNOSTIC_KEYS
 
 from .adapter import ChatmailAdapter, validate_payload
 from .config import ChatmailConfig, chat_id
@@ -79,7 +78,9 @@ class FakeChatmailAdapter(ChatmailAdapter):
         channel: str | None = None,
     ) -> CanonicalEvent:
         from dataclasses import replace
+
         import msgspec
+
         from .codec import ChatmailCodec
 
         if event_kind not in {"message.created", "message.text"}:

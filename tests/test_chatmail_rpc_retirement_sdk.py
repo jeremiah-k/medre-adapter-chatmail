@@ -22,6 +22,7 @@ import time
 from pathlib import Path
 
 import pytest
+from conftest import wait_until
 
 from medre.adapters.chatmail.config import ChatmailConfig
 from medre.adapters.chatmail.session import (
@@ -30,8 +31,6 @@ from medre.adapters.chatmail.session import (
     build_rpc,
     server_path,
 )
-
-from conftest import wait_until
 
 pytestmark = [
     pytest.mark.chatmail_sdk,

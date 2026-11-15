@@ -12,9 +12,6 @@ from types import SimpleNamespace
 from uuid import UUID
 
 import pytest
-
-from medre.adapters.chatmail.plugin import adapter_spec
-from medre.adapters.chatmail.stopped_declaration import declaration
 from medre.maintenance.stopped_declare import (
     ExclusionRefused,
     LocalExclusion,
@@ -27,6 +24,9 @@ from medre.maintenance.stopped_snapshot import (
     restore_stopped_snapshot,
     verify_stopped_snapshot,
 )
+
+from medre.adapters.chatmail.plugin import adapter_spec
+from medre.adapters.chatmail.stopped_declaration import declaration
 
 UUID_DIR = "c43fc7c4-94ab-4ba3-a871-72b53d43e76f"
 

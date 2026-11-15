@@ -4,22 +4,20 @@ import asyncio
 import json
 import logging
 import os
+from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
-import pytest
-
 import msgspec
-from dataclasses import replace
-
+import pytest
 from conftest import wait_until
-
 from medre.core.contracts.adapter import AdapterContext
 from medre.core.contracts.delivery import DeferredHandoffCompleted
 from medre.core.events.canonical import EventRelation, RelationTargetFact
 from medre.core.events.delivery import DeliveryAttemptProvenance
 from medre.core.rendering.renderer import RenderingContext
+
 from medre.adapters.chatmail.adapter import ChatmailAdapter
 from medre.adapters.chatmail.config import ChatmailConfig
 from medre.adapters.chatmail.renderer import ChatmailRenderer

@@ -1,6 +1,7 @@
 """Provider declares the exact prerelease SDK-free registration contract."""
 
 from medre.adapter_spec import ADAPTER_API_VERSION
+
 from medre.adapters.chatmail.plugin import adapter_spec
 
 

@@ -63,11 +63,16 @@ jobs:
           core_sha=$(git -C .core rev-parse HEAD)
           adapter_sha=$(git rev-parse HEAD)
           echo "Core: ${core_sha}; adapter: ${adapter_sha}" >> "$GITHUB_STEP_SUMMARY"
-      - name: Check Python quality and whitespace
+      - name: Cache Trunk tools
+        if: matrix.mode == 'fake' && matrix.python == '3.13'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/trunk
+          key: trunk-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.trunk/trunk.yaml', '.trunk/trunk') }}
+      - name: Check project quality and whitespace
         if: matrix.mode == 'fake' && matrix.python == '3.13'
         run: |
-          uvx --from ruff==0.17.3 ruff check src tests
-          uvx --from black==26.10.1 black --check src tests
+          .trunk/trunk check --all --no-fix --ci
           git show --format= --check HEAD
       - name: Install locked core test environment
         run: uv sync --project .core --locked --extra dev

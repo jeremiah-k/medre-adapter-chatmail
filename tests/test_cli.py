@@ -1,7 +1,7 @@
 import pytest
+from conftest import NativeSession
 
 from medre.adapters.chatmail.cli import execute, main, parser, read_qr, selected_config
-from conftest import NativeSession
 
 
 def test_help_does_not_open_profiles(capsys):
@@ -216,6 +216,7 @@ def test_json_discovery_escapes_c1_controls_without_changing_values(
     monkeypatch, capsys
 ):
     import json
+
     import medre.adapters.chatmail.cli as cli
 
     async def output(*args):
@@ -264,7 +265,8 @@ def test_invalid_account_reports_safe_error(capsys):
 
 def test_public_profile_directory_is_rejected_without_chmod(tmp_path):
     import os
-    from medre.adapters.chatmail.cli import create_profile_directory, UsageError
+
+    from medre.adapters.chatmail.cli import UsageError, create_profile_directory
 
     if os.name != "posix":
         pytest.skip("POSIX permissions")
