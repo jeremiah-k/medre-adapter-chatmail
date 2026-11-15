@@ -97,7 +97,7 @@ jobs:
         run: .core/.venv/bin/python -m pytest -q -ra --cov=medre.adapters.chatmail --cov-branch --cov-report=xml:coverage-fake.xml --junitxml=junit-fake.xml
       - name: Run pinned SDK contracts
         if: matrix.mode == 'sdk'
-        run: .core/.venv/bin/python -m pytest -q -m chatmail_sdk --cov=medre.adapters.chatmail --cov-branch --cov-report=xml:coverage-sdk.xml --junitxml=junit-sdk.xml
+        run: .core/.venv/bin/python -m pytest -q -m "chatmail_sdk and not local_integration and not soak and not live and not hardware and not docker" --cov=medre.adapters.chatmail --cov-branch --cov-report=xml:coverage-sdk.xml --junitxml=junit-sdk.xml
       - name: Prove fake routing through the installed CLI
         if: matrix.mode == 'fake'
         env:
