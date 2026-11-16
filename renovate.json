@@ -10,7 +10,9 @@
     "custom.regex"
   ],
   "timezone": "America/Chicago",
-  "dependencyDashboard": true,
+  "dependencyDashboard": {
+    "enabled": true
+  },
   "automerge": false,
   "packageRules": [
     {
