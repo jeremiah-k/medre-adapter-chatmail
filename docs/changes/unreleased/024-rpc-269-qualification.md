@@ -1,11 +1,12 @@
 # Requalify native replies at Delta Chat RPC 2.69.0
 
-Record a fresh two-profile GreenMail campaign at the current 2.69.0 client
-and server pair reporting native quote identity, renderer-derived
-sender/origin presentation, reconnect, recovered ingress after restart,
-and deferred SMTP handoff with an independent peer receipt. Preserve the
-separate 2.66.0 evidence. The local relay campaign does not qualify the
-official Chatmail deployment or sustained load. The accompanying source
-audit records three discrepancies between the captured digest strings and
-the named Git revision; exact-source qualification remains unresolved until
-reconciled with original run evidence or repeated on verified sources.
+Record a two-profile GreenMail campaign at the 2.69.0 client and server pair
+reporting native quote identity, renderer-derived sender/origin presentation,
+reconnect, recovered ingress after restart, and deferred SMTP handoff with an
+independent peer receipt. Preserve the separate 2.66.0 evidence.
+
+Reconcile all five source digests against the retained original campaign report
+and pre-publication export. Preserve the erroneous public transcription as an
+audit artifact; digest similarity alone does not establish source provenance.
+The campaign covers a local relay, not the official Chatmail deployment,
+sustained load, or a full routed core-storage path.

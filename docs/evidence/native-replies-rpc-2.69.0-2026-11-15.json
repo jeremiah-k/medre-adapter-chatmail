@@ -33,9 +33,9 @@
   "limits": "Local GreenMail SMTP/IMAP fixture; core admission/checkpoint callbacks are test sinks, not a full routed storage proof. Not official Chatmail Docker deployment or sustained-load qualification.",
   "source_sha256": {
     "src/medre/adapters/chatmail/adapter.py": "995728c1c0a16fc83e5ec49ade0fe8acaa2f723711ca2751f2d63721cdb37226",
-    "src/medre/adapters/chatmail/renderer.py": "279c2e54126a345f91273052fc4604b0ac5f656a740dfc81ccbe85b3d2ecb1c",
-    "src/medre/adapters/chatmail/state.py": "befab4df995fc94778856cf298a8ab3e9f27519bfbebab7f086834d695c9a0fc",
-    "src/medre/adapters/chatmail/session.py": "fa18e5c63aea51c5ce26e028211202be9b6c94aaa06efd322dc0855dbd434504",
+    "src/medre/adapters/chatmail/renderer.py": "279c2e54126a345f91273052fc4604b0eac5f656a740dfc81ccbe85b3d2ecb1c",
+    "src/medre/adapters/chatmail/state.py": "befab4df995fc94778856cf298a8ab3e9f27519bfbebab7f086834d695a9c0fc",
+    "src/medre/adapters/chatmail/session.py": "fa18e5c63aea51b5ce26e028211202be9b6c94aaa06efd322dc0855dbd434504",
     "tests/test_live.py": "43c0cedac4c3f8c87819a20885ace00f5375b4efc9569c80e1b18440059304e9"
   }
 }
