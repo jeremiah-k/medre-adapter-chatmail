@@ -69,5 +69,22 @@ server. The independent peer observes the renderer-derived quote and exact
 sender/origin presentation after reconnect and restart. Native SDK contracts
 also qualify profile exclusion and stopped-state capture/reopen using fresh
 2.66.0 state. This is same-version restore evidence, not an upgrade path.
-Both records retain their tested revision pair and source hashes; the 2.65.0
-record describes its own campaign and is not evidence for a different SDK.
+The earlier records describe their own revision pairs and SDKs and are not
+qualification for a different SDK.
+
+The [RPC 2.69.0 campaign](evidence/native-replies-rpc-2.69.0-2026-11-15.json)
+records a passing GreenMail run and an independent quote receipt. Its
+[companion source audit](evidence/native-replies-rpc-2.69.0-2026-11-15-source-audit.json)
+reconciles the source digests against the retained original campaign report
+and pre-publication export: all five match the named provider Git revision.
+The retained independent peer snapshot also matches every public receipt field.
+
+Three digest strings were copied incorrectly into the earlier public
+[transcription](evidence/native-replies-rpc-2.69.0-2026-11-15-transcribed.json).
+That copy remains byte-preserved for the audit; the campaign record restores
+its source digests from the original retained artifacts. Near-matching digest
+strings alone do not prove which bytes ran. The reconciliation recovers the
+reported campaign provenance without repeating the campaign or making a fresh
+measurement of historical runtime bytes. It does not authenticate the retained
+observations. This local-relay evidence does not qualify the official Chatmail
+deployment, sustained load, or a full routed core-storage path.

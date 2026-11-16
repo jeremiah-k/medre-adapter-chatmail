@@ -1,0 +1,35 @@
+{
+  "record_file": "native-replies-rpc-2.69.0-2026-11-15.json",
+  "record_sha256": "37b2daab9ce6453a2b8278431c30811d42a673a9df3e735a8d681e0be5845093",
+  "provider_revision": "51db7e500f33401f0bf1f2de690d5d3ece25d8ac",
+  "core_revision": "989f44336e1f009ca89d7b50c8bbe0794ca251a6",
+  "basis": "SHA-256 of Git blob bytes at the named provider revision; not measured campaign runtime bytes",
+  "source_sha256_at_named_revision": {
+    "src/medre/adapters/chatmail/adapter.py": "995728c1c0a16fc83e5ec49ade0fe8acaa2f723711ca2751f2d63721cdb37226",
+    "src/medre/adapters/chatmail/renderer.py": "279c2e54126a345f91273052fc4604b0eac5f656a740dfc81ccbe85b3d2ecb1c",
+    "src/medre/adapters/chatmail/state.py": "befab4df995fc94778856cf298a8ab3e9f27519bfbebab7f086834d695a9c0fc",
+    "src/medre/adapters/chatmail/session.py": "fa18e5c63aea51b5ce26e028211202be9b6c94aaa06efd322dc0855dbd434504",
+    "tests/test_live.py": "43c0cedac4c3f8c87819a20885ace00f5375b4efc9569c80e1b18440059304e9"
+  },
+  "mismatched_files": [
+    "src/medre/adapters/chatmail/renderer.py",
+    "src/medre/adapters/chatmail/state.py",
+    "src/medre/adapters/chatmail/session.py"
+  ],
+  "campaign_source_verification": "reconciled_with_retained_campaign_record",
+  "mismatch_characterization": {
+    "measured": "Each transcribed digest differs from the Git blob digest by one transcription slip: one deleted character (renderer, 63 recorded characters), one transposed pair (state, offsets 58 and 60), and one substituted character (session, offset 14).",
+    "implication": "These edit patterns describe the erroneous public transcription only. Digest similarity alone does not establish which source bytes ran; reconciliation uses the separately retained original campaign records.",
+    "transcription_preservation": "The earlier public transcription is preserved byte-for-byte in transcribed_record_file; record_file restores the source digests reported by the retained original campaign artifacts."
+  },
+  "transcribed_record_file": "native-replies-rpc-2.69.0-2026-11-15-transcribed.json",
+  "transcribed_record_sha256": "39de78c32b0117a6e156edf47fa24946abe99874b2eaeb9ec37c8c595dfc4534",
+  "retained_campaign_artifacts_sha256": {
+    "native-replies-2026-11-15.json": "7bdfc36fe917169e1970082798317de55896026f869c6fe1ef5db4ee633deb07",
+    "proposed-checked-in-evidence.json": "a44b3b4ec16fd4de6bd41e024ce9c4b97be28f6b940ceb8087a30596dbe3cdfc",
+    "peer-snapshot.json": "3c995ce2dc3d0728367bc1dd91156922eef2e1b8f86517a7b646f5398f5ae28e",
+    "junit.xml": "8dbf3f9f034fbd6f27a834ad809ae58ccf62c1248c7c70b3d6c9f997efbb17bc"
+  },
+  "reconciliation": "All five source digests in the retained original campaign report and pre-publication export match the named Git blobs. Every public receipt field matches the retained independent peer snapshot. The corrected record restores those original digests; the earlier public transcription is retained separately.",
+  "verification_limits": "This reconciles retained campaign records, not a fresh measurement of historical runtime bytes or an authentication of the observations. No repeat campaign was run."
+}
