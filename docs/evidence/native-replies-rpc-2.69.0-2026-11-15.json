@@ -1,0 +1,41 @@
+{
+  "core_revision": "989f44336e1f009ca89d7b50c8bbe0794ca251a6",
+  "provider_revision": "51db7e500f33401f0bf1f2de690d5d3ece25d8ac",
+  "sdk_client": "2.69.0",
+  "sdk_server": "2.69.0",
+  "relay_image": "sha256:6a56ce61d89d96ac5b11a202a708064eb9f107f9d729f0710a0686556b84be48",
+  "exit_status": 0,
+  "peer_receipts": [
+    {
+      "id": 26,
+      "chatId": 13,
+      "fromId": 10,
+      "text": "[Reply qualification] MEDRE Chatmail Peer: MEDRE Chatmail 941b8f4729434422bc1d5469d69d42ea reply",
+      "quote": {
+        "authorDisplayColor": "#9a4e00",
+        "authorDisplayName": "Me",
+        "chatId": 13,
+        "image": null,
+        "isForwarded": false,
+        "kind": "WithMessage",
+        "messageId": 22,
+        "overrideSenderName": null,
+        "text": "MEDRE Chatmail 941b8f4729434422bc1d5469d69d42ea",
+        "viewType": "Text"
+      },
+      "overrideSenderName": "MEDRE Chatmail Peer [Reply qualification]",
+      "state": 10,
+      "downloadState": "Done",
+      "showPadlock": true
+    }
+  ],
+  "qualification": "independent encrypted-group native quote, renderer-derived sender/origin presentation, reconnect, restart recovery and SMTP handoff",
+  "limits": "Local GreenMail SMTP/IMAP fixture; core admission/checkpoint callbacks are test sinks, not a full routed storage proof. Not official Chatmail Docker deployment or sustained-load qualification.",
+  "source_sha256": {
+    "src/medre/adapters/chatmail/adapter.py": "995728c1c0a16fc83e5ec49ade0fe8acaa2f723711ca2751f2d63721cdb37226",
+    "src/medre/adapters/chatmail/renderer.py": "279c2e54126a345f91273052fc4604b0ac5f656a740dfc81ccbe85b3d2ecb1c",
+    "src/medre/adapters/chatmail/state.py": "befab4df995fc94778856cf298a8ab3e9f27519bfbebab7f086834d695c9a0fc",
+    "src/medre/adapters/chatmail/session.py": "fa18e5c63aea51c5ce26e028211202be9b6c94aaa06efd322dc0855dbd434504",
+    "tests/test_live.py": "43c0cedac4c3f8c87819a20885ace00f5375b4efc9569c80e1b18440059304e9"
+  }
+}
