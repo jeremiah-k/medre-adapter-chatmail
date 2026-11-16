@@ -69,5 +69,17 @@ server. The independent peer observes the renderer-derived quote and exact
 sender/origin presentation after reconnect and restart. Native SDK contracts
 also qualify profile exclusion and stopped-state capture/reopen using fresh
 2.66.0 state. This is same-version restore evidence, not an upgrade path.
-Both records retain their tested revision pair and source hashes; the 2.65.0
-record describes its own campaign and is not evidence for a different SDK.
+The earlier records describe their own revision pairs and SDKs and are not
+qualification for a different SDK.
+
+The [RPC 2.69.0 campaign](evidence/native-replies-rpc-2.69.0-2026-11-15.json)
+records a passing GreenMail run and an independent quote receipt. Its
+[companion source audit](evidence/native-replies-rpc-2.69.0-2026-11-15-source-audit.json)
+recomputes the five source digests from the named provider Git revision.
+Three recorded digests (renderer, state and session) disagree with their
+Git blobs. The original receipt and reported digests are retained unchanged;
+recomputing reference digests does not establish what was installed during
+the campaign. Resolve the discrepancies against the original run's source
+capture, or repeat the campaign on an explicitly verified clean revision
+pair, before accepting exact-source qualification. This archive does not
+qualify the official Chatmail deployment or a full routed core-storage path.
