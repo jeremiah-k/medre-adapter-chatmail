@@ -76,3 +76,15 @@ def test_contributing_sdk_selection_matches_ci():
         # The first -m selects the module; the second selects pytest markers.
         sdk_selectors.append(args[args.index("-m", args.index("pytest") + 1) + 1])
     assert sdk_selectors == [expected]
+
+
+def test_core_dependency_updates_do_not_raise_an_in_range_floor() -> None:
+    root = Path(__file__).resolve().parents[1]
+    config = json.loads((root / "renovate.json").read_text(encoding="utf-8"))
+    rules = [
+        rule
+        for rule in config["packageRules"]
+        if rule.get("matchPackageNames") == ["medre"]
+    ]
+    assert len(rules) == 1
+    assert rules[0]["rangeStrategy"] == "replace"
