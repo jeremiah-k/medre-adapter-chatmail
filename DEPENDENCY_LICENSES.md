@@ -3,8 +3,8 @@
 The `LICENSE` in this repository covers original MEDRE-authored adapter code
 (MIT). It does not change the license of imported SDK code.
 
-- `deltachat-rpc-client==2.69.0`: MPL-2.0 license — [release metadata](https://pypi.org/project/deltachat-rpc-client/).
-- `deltachat-rpc-server==2.69.0`: MPL-2.0 notice in the release wheel at
+- `deltachat-rpc-client` at the version pinned in `pyproject.toml`: MPL-2.0 license — [release metadata](https://pypi.org/project/deltachat-rpc-client/).
+- `deltachat-rpc-server` at the version pinned in `pyproject.toml`: MPL-2.0 notice in the release wheel at
   `deltachat_rpc_server/LICENSE` — [release artifacts](https://pypi.org/project/deltachat-rpc-server/).
   Its package metadata omits the license expression; that omission does not
   remove the packaged notice. The [matching native source](https://github.com/chatmail/core)
