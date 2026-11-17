@@ -7,7 +7,7 @@ requires-python = ">=3.11"
 license = "MIT"
 classifiers = ["Typing :: Typed"]
 dependencies = [
-  "medre>=0.1.0,<0.2.0",
+  "medre>=0.1.1,<0.2.0",
   "deltachat-rpc-client==2.69.0",
   "deltachat-rpc-server==2.69.0",
 ]
