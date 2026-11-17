@@ -12,16 +12,23 @@ For a persistent bridge, keep core and adapters in one locked uv project:
 ```bash
 uv init --bare medre-bridge
 cd medre-bridge
-uv add 'medre @ git+https://github.com/jeremiah-k/medre.git@main' \
-  'medre-adapter-chatmail @ git+https://github.com/jeremiah-k/medre-adapter-chatmail.git@main'
+uv add medre medre-adapter-chatmail
 ```
 
 Both RPC packages are installed together; no Rust build or separate daemon
-installation is needed. Use immutable Git revisions for reproducible deployments.
+installation is needed. Keep the project lock for reproducible deployments. For Git development
+sources, select immutable revisions.
 `uv run --locked` preserves the project lock when starting commands.
 
-For a persistent MEDRE tool installation, `medre adapters install chatmail`
-adds the provider to the same environment. Provision through `medre adapter
+For a persistent MEDRE 0.1.1 or later tool installation:
+
+```bash
+uv tool install medre
+medre adapters install chatmail
+```
+
+Existing saved Git requests and catalogs retain their sources. On Windows,
+run the printed uv installation command after MEDRE exits. Provision through `medre adapter
 chatmail`; a separately exposed helper executable is unnecessary. The
 standalone `medre-chatmail` entry point remains available in activated project
 environments and uses the same arguments and execution path.
@@ -194,8 +201,8 @@ The run summary records both resolved commit IDs. SDK constraints are exported
 from core's lock without installing private core test helpers into this provider.
 
 The [live test](tests/test_live.py) accepts an explicitly prepared relay/profile
-fixture. Native quote presentation requires that independent-peer campaign on
-the candidate revision before merging or releasing native reply support; API-shape
+fixture. Native quote presentation requires that independent-peer campaign
+before merging or releasing changes to native reply support; API-shape
 tests alone do not qualify it. See [live testing](docs/live-testing.md). All service fixtures use
 ordinary container permissions; no host system configuration is required by this
 provider's tests.

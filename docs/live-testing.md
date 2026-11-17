@@ -52,7 +52,7 @@ sender override. SMTP feedback alone does not qualify native quote presentation.
 The SDK quote API test checks the pinned client's draft shape without delivering
 a message. Passing it or the deterministic journal tests does not replace the
 independent-peer test. Native reply promotion must not merge or release until
-the live campaign passes on the candidate revision pair. Record those revisions,
+the live campaign passes on the exact core/provider revision pair under review. Record those revisions,
 the pinned SDK versions and the peer result with qualification evidence; exclude
 credentials and private profile paths.
 

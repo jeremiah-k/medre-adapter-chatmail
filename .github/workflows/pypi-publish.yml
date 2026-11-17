@@ -44,10 +44,8 @@ jobs:
       - name: Build distributions
         run: python -m build
 
-      # medre>=0.1.0,<0.2.0 does not resolve from the PyPI index until medre
-      # 0.1.0 is published. A failed resolution skips the upload gracefully
-      # (workflow stays green) instead of failing the release; GitHub releases
-      # remain the interim distribution channel.
+      # Resolve the built wheel against the published index. If dependencies
+      # cannot resolve, skip PyPI upload and retain the GitHub release assets.
       - name: Resolve built wheel dependencies from PyPI
         id: pypi_dependencies
         continue-on-error: true
@@ -63,11 +61,11 @@ jobs:
             echo "eligible=true" >> "$GITHUB_OUTPUT"
           else
             echo "eligible=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::Skipping PyPI upload: the built wheel's Requires-Dist set does not resolve from the real PyPI index (medre is not published yet); distributions remain attached to the GitHub release."
+            echo "::warning::Skipping PyPI upload: the built wheel's Requires-Dist set does not resolve from the real PyPI index; distributions remain attached to the GitHub release."
             {
               echo "### PyPI upload skipped"
               echo ""
-              echo "The built wheel's Requires-Dist set does not resolve from the PyPI index. Publish the dependencies (medre 0.1.0) first, then re-release."
+              echo "The built wheel's Requires-Dist set does not resolve from the PyPI index. Verify the dependency versions, Python compatibility and index availability before retrying publication."
             } >> "$GITHUB_STEP_SUMMARY"
           fi
 

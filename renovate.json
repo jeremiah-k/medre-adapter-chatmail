@@ -27,9 +27,9 @@
       "enabled": false
     },
     {
-      "description": "Preserve the supported core compatibility range",
+      "description": "Keep in-range core releases installable without raising the minimum",
       "matchPackageNames": ["medre"],
-      "rangeStrategy": "bump"
+      "rangeStrategy": "replace"
     },
     {
       "description": "Review coordinated tool upgrades after the shared quality gate",
