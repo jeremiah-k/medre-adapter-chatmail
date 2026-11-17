@@ -1,4 +1,4 @@
-"""Runtime pin values live only in pyproject and the license disclosure."""
+"""Runtime pin values live only in pyproject (and the resolved lockfile)."""
 
 from __future__ import annotations
 
@@ -11,9 +11,9 @@ _VERSION_LITERAL = re.compile(r"\d+(?:\.\d+){1,3}(?:[a-zA-Z0-9.+_-]*)?")
 
 ROOT = Path(__file__).resolve().parents[1]
 
-ALLOWED_FILE_NAMES = {"pyproject.toml", "DEPENDENCY_LICENSES.md", "uv.lock"}
+ALLOWED_FILE_NAMES = {"pyproject.toml", "uv.lock"}
 SCAN_DIRECTORIES = ("src", "tests", "scripts", "docs", ".github")
-SCAN_ROOT_FILES = ("README.md", "renovate.json")
+SCAN_ROOT_FILES = ("README.md", "renovate.json", "DEPENDENCY_LICENSES.md")
 
 
 def _declared_runtime_pins() -> dict[str, str]:
@@ -41,7 +41,7 @@ def _scanned_files() -> list[Path]:
 
 
 def test_runtime_pin_values_stay_out_of_secondary_files():
-    """A version-only dependency bump must not require edits beyond the pin and disclosure."""
+    """A version-only dependency bump stays confined to the declared pins."""
     patterns = {
         name: re.compile(
             rf"{re.escape(name)}(?:\[[^\]]*\])?(?:==|@|\s+){re.escape(value)}"

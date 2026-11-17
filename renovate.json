@@ -58,15 +58,6 @@
   },
   "customManagers": [
     {
-      "description": "Keep the license disclosure pinned requirement current with pyproject",
-      "matchStrings": [
-        "`(?<depName>[A-Za-z0-9_.-]+)(?:\\[[a-z,]+\\])?==(?<currentValue>[^`\\s]+)`"
-      ],
-      "datasourceTemplate": "pypi",
-      "customType": "regex",
-      "managerFilePatterns": ["/^DEPENDENCY_LICENSES\\.md$/"]
-    },
-    {
       "customType": "regex",
       "description": "Track Trunk CLI, plugins and linters from their declared upstream package sources",
       "managerFilePatterns": ["/^\\.trunk/trunk\\.yaml$/"],
