@@ -18,8 +18,10 @@ import os
 import signal
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
+from typing import Any
 
 import pytest
 from conftest import wait_until
@@ -502,3 +504,203 @@ async def test_forced_timeout_probe_retires_native_server(tmp_path, retire):
     await replacement.start()
     assert isinstance(await replacement.call("get_system_info"), dict)
     await replacement.stop(timeout=1)
+
+
+# --- Late-start native ownership boundary (D3b investigation) ---
+#
+# The RPC startup runs off the event loop; ``stop`` drains in-flight
+# operations for a bounded time, then clears ``self.rpc`` and releases the
+# profile lease. The late-completion cleanup inside ``_run`` consults that
+# mutable reference. The factories below gate only the SDK ``start`` entry
+# on a threading event: process birth, the health check and the client
+# threads stay the unmodified released SDK, so every observation about
+# native processes below comes from real ``deltachat-rpc-server`` lifecycle.
+
+
+def _gated_start_factory(
+    gate: threading.Event,
+    entered: threading.Event,
+    created: list[Any],
+) -> Any:
+    def factory(accounts_dir: str, executable: str, notify: Any) -> Any:
+        rpc = build_rpc(accounts_dir, executable, notify)
+        real_start = rpc.start
+
+        def gated_start() -> None:
+            entered.set()
+            gate.wait()
+            real_start()
+
+        # The instance attribute shadows the SDK method; only the entry is
+        # gated, everything inside the SDK start remains unmodified.
+        rpc.start = gated_start
+        created.append(rpc)
+        return rpc
+
+    return factory
+
+
+async def _retire_late_owner(rpc: Any) -> None:
+    """Retire a late owner like the session shutdown path would.
+
+    A killed server leaves the SDK writer thread blocked on the request
+    queue sentinel; without the full close the non-daemon client threads
+    block interpreter exit.
+    """
+    process = vars(rpc).get("process")
+    if process is not None and process.poll() is None:
+        with contextlib.suppress(ProcessLookupError):
+            process.kill()
+    with contextlib.suppress(Exception):
+        await asyncio.to_thread(ChatmailSession._close, rpc)
+
+
+@pytest.mark.timeout(60)
+async def test_stop_during_delayed_startup_leaves_late_native_owner(
+    config, retire
+):
+    """A startup completing after stop released the lease is never retired.
+
+    Deterministic injection: the SDK start entry is gated while ``stop``
+    drains, times out, clears ``self.rpc`` and releases the lease. Opening
+    the gate lets the unmodified SDK spawn the native process afterwards.
+    """
+    gate = threading.Event()
+    entered = threading.Event()
+    created: list[Any] = []
+    session = retire(
+        ChatmailSession(
+            config, rpc_factory=_gated_start_factory(gate, entered, created)
+        )
+    )
+    start_task = asyncio.create_task(session.start())
+    await wait_until(entered.is_set, timeout=_RESOLUTION_BOUND)
+    started = time.monotonic()
+    with pytest.raises(TimeoutError):
+        await asyncio.wait_for(session.stop(timeout=0.05), 8)
+    stop_elapsed = time.monotonic() - started
+    print(
+        f"Q7 stop drain during gated startup cleared the reference and "
+        f"released the lease in {stop_elapsed:.3f}s"
+    )
+    assert session.lease is None and session.rpc is None
+    assert not start_task.done()
+    # Late birth: the unmodified SDK creates the native process after the
+    # owner reference and the profile lease are already gone.
+    gate.set()
+    rpc = created[0]
+    await wait_until(
+        lambda: vars(rpc).get("process") is not None, timeout=_RESOLUTION_BOUND
+    )
+    process = vars(rpc)["process"]
+    await wait_until(lambda: not session._active, timeout=_RESOLUTION_BOUND)
+    with pytest.raises(SessionError, match="unavailable"):
+        await asyncio.wait_for(start_task, _RESOLUTION_BOUND)
+    # The late-completion cleanup consulted the cleared reference: the
+    # healthy native owner outlives the stopped session that spawned it.
+    assert process.poll() is None
+    print(f"Q8 late native owner pid {process.pid} survived the cleared reference")
+    # A replacement acquires the released MEDRE lease while the unretired
+    # owner still holds the native accounts.lock.
+    replacement = retire(ChatmailSession(config))
+    started = time.monotonic()
+    with pytest.raises(SessionError, match="inspect the native profile"):
+        await replacement.start()
+    refusal_elapsed = time.monotonic() - started
+    print(
+        f"Q9 replacement start refused after {refusal_elapsed:.3f}s behind "
+        f"the unretired owner"
+    )
+    assert 2.0 <= refusal_elapsed < 30.0
+    # Operator recovery requires finding and killing the unretired owner
+    # outside the session; retirement then succeeds immediately.
+    process.kill()
+    await asyncio.to_thread(process.wait, _RESOLUTION_BOUND)
+    recovered = retire(ChatmailSession(config))
+    await recovered.start()
+    assert isinstance(await recovered.call("get_system_info"), dict)
+    await recovered.stop(timeout=1)
+    await _retire_late_owner(rpc)
+
+
+@pytest.mark.timeout(60)
+async def test_late_birth_coexists_with_replacement_owner(config, retire):
+    """A late owner born under a live replacement is fenced by the native lock.
+
+    The replacement acquires the released MEDRE lease and owns the profile
+    natively before the gated startup proceeds; the unmodified SDK then
+    creates a second native server process on the same accounts directory.
+    """
+    gate = threading.Event()
+    entered = threading.Event()
+    created: list[Any] = []
+    session = retire(
+        ChatmailSession(
+            config, rpc_factory=_gated_start_factory(gate, entered, created)
+        )
+    )
+    start_task = asyncio.create_task(session.start())
+    await wait_until(entered.is_set, timeout=_RESOLUTION_BOUND)
+    with pytest.raises(TimeoutError):
+        await asyncio.wait_for(session.stop(timeout=0.05), 8)
+    replacement = retire(ChatmailSession(config))
+    await replacement.start()
+    replacement_process = vars(replacement.rpc)["process"]
+    assert replacement_process.poll() is None
+    # Late birth against the live native owner.
+    gate.set()
+    rpc = created[0]
+    await wait_until(
+        lambda: vars(rpc).get("process") is not None, timeout=_RESOLUTION_BOUND
+    )
+    late_process = vars(rpc)["process"]
+    assert late_process.poll() is None
+    print(
+        f"Q10 two native server processes coexisted on one profile: "
+        f"{replacement_process.pid} (replacement owner) and "
+        f"{late_process.pid} (late candidate)"
+    )
+    # The native accounts.lock refuses the candidate; it exits without
+    # displacing the owner and the profile stays usable.
+    with pytest.raises(SessionError, match="inspect the native profile"):
+        await asyncio.wait_for(start_task, 30.0)
+    assert late_process.poll() is not None
+    assert replacement_process.poll() is None
+    assert isinstance(await replacement.call("get_system_info"), dict)
+    await replacement.stop(timeout=1)
+    await _retire_late_owner(rpc)
+
+
+@pytest.mark.timeout(60)
+async def test_cancelled_delayed_startup_leaves_late_native_owner(config, retire):
+    """Cancellation during a gated startup also orphans a late native owner.
+
+    The off-loop startup thread cannot be interrupted; the bounded stop
+    drain gives up and releases the lease while the startup is in flight,
+    and the SDK spawns the native process afterwards.
+    """
+    gate = threading.Event()
+    entered = threading.Event()
+    created: list[Any] = []
+    session = retire(
+        ChatmailSession(
+            config, rpc_factory=_gated_start_factory(gate, entered, created)
+        )
+    )
+    start_task = asyncio.create_task(session.start())
+    await wait_until(entered.is_set, timeout=_RESOLUTION_BOUND)
+    start_task.cancel()
+    await wait_until(start_task.done, timeout=8.0)
+    with pytest.raises(TimeoutError):
+        start_task.result()
+    assert session.lease is None and session.rpc is None
+    gate.set()
+    rpc = created[0]
+    await wait_until(
+        lambda: vars(rpc).get("process") is not None, timeout=_RESOLUTION_BOUND
+    )
+    process = vars(rpc)["process"]
+    await wait_until(lambda: not session._active, timeout=_RESOLUTION_BOUND)
+    assert process.poll() is None
+    print(f"Q11 cancellation orphaned late native owner pid {process.pid}")
+    await _retire_late_owner(rpc)
