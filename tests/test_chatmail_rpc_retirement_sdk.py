@@ -506,15 +506,16 @@ async def test_forced_timeout_probe_retires_native_server(tmp_path, retire):
     await replacement.stop(timeout=1)
 
 
-# --- Late-start native ownership boundary (D3b investigation) ---
+# --- Late-start native ownership boundary (D3b) ---
 #
 # The RPC startup runs off the event loop; ``stop`` drains in-flight
 # operations for a bounded time, then clears ``self.rpc`` and releases the
-# profile lease. The late-completion cleanup inside ``_run`` consults that
-# mutable reference. The factories below gate only the SDK ``start`` entry
-# on a threading event: process birth, the health check and the client
-# threads stay the unmodified released SDK, so every observation about
-# native processes below comes from real ``deltachat-rpc-server`` lifecycle.
+# profile lease. The late-completion cleanup inside ``_run`` retires the
+# client the operation captured, independent of that mutable reference.
+# The factories below gate only the SDK ``start`` entry on a threading
+# event: process birth, the health check and the client threads stay the
+# unmodified released SDK, so every observation about native processes
+# below comes from real ``deltachat-rpc-server`` lifecycle.
 
 
 def _gated_start_factory(
@@ -556,14 +557,14 @@ async def _retire_late_owner(rpc: Any) -> None:
 
 
 @pytest.mark.timeout(60)
-async def test_stop_during_delayed_startup_leaves_late_native_owner(
-    config, retire
-):
-    """A startup completing after stop released the lease is never retired.
+async def test_stop_during_delayed_startup_retires_late_native_owner(config, retire):
+    """A startup completing after stop released the lease retires its owner.
 
     Deterministic injection: the SDK start entry is gated while ``stop``
     drains, times out, clears ``self.rpc`` and releases the lease. Opening
-    the gate lets the unmodified SDK spawn the native process afterwards.
+    the gate lets the unmodified SDK spawn the native process afterwards;
+    the late-completion cleanup must retire that captured client without
+    consulting the cleared reference.
     """
     gate = threading.Event()
     entered = threading.Event()
@@ -596,30 +597,27 @@ async def test_stop_during_delayed_startup_leaves_late_native_owner(
     await wait_until(lambda: not session._active, timeout=_RESOLUTION_BOUND)
     with pytest.raises(SessionError, match="unavailable"):
         await asyncio.wait_for(start_task, _RESOLUTION_BOUND)
-    # The late-completion cleanup consulted the cleared reference: the
-    # healthy native owner outlives the stopped session that spawned it.
-    assert process.poll() is None
-    print(f"Q8 late native owner pid {process.pid} survived the cleared reference")
-    # A replacement acquires the released MEDRE lease while the unretired
-    # owner still holds the native accounts.lock.
+    # The late-completion cleanup retired the captured client: the process
+    # is dead and its SDK client threads cannot block interpreter exit.
+    assert process.poll() is not None
+    assert not any(
+        vars(rpc)[name].is_alive()
+        for name in ("reader_thread", "writer_thread", "events_thread")
+    )
+    print(f"Q8 late native owner pid {process.pid} retired after the cleared reference")
+    # A replacement acquires the released lease and starts without the
+    # native accounts.lock refusal an unretired owner would force.
     replacement = retire(ChatmailSession(config))
     started = time.monotonic()
-    with pytest.raises(SessionError, match="inspect the native profile"):
-        await replacement.start()
-    refusal_elapsed = time.monotonic() - started
+    await replacement.start()
+    start_elapsed = time.monotonic() - started
     print(
-        f"Q9 replacement start refused after {refusal_elapsed:.3f}s behind "
-        f"the unretired owner"
+        f"Q9 replacement started in {start_elapsed:.3f}s without the "
+        f"native lock refusal"
     )
-    assert 2.0 <= refusal_elapsed < 30.0
-    # Operator recovery requires finding and killing the unretired owner
-    # outside the session; retirement then succeeds immediately.
-    process.kill()
-    await asyncio.to_thread(process.wait, _RESOLUTION_BOUND)
-    recovered = retire(ChatmailSession(config))
-    await recovered.start()
-    assert isinstance(await recovered.call("get_system_info"), dict)
-    await recovered.stop(timeout=1)
+    assert start_elapsed < 2.0
+    assert isinstance(await replacement.call("get_system_info"), dict)
+    await replacement.stop(timeout=1)
     await _retire_late_owner(rpc)
 
 
@@ -661,23 +659,29 @@ async def test_late_birth_coexists_with_replacement_owner(config, retire):
         f"{late_process.pid} (late candidate)"
     )
     # The native accounts.lock refuses the candidate; it exits without
-    # displacing the owner and the profile stays usable.
+    # displacing the owner and the profile stays usable. The late owner's
+    # client threads are drained by its own captured-client retirement.
     with pytest.raises(SessionError, match="inspect the native profile"):
         await asyncio.wait_for(start_task, 30.0)
     assert late_process.poll() is not None
     assert replacement_process.poll() is None
+    assert not any(
+        vars(rpc)[name].is_alive()
+        for name in ("reader_thread", "writer_thread", "events_thread")
+    )
     assert isinstance(await replacement.call("get_system_info"), dict)
     await replacement.stop(timeout=1)
     await _retire_late_owner(rpc)
 
 
 @pytest.mark.timeout(60)
-async def test_cancelled_delayed_startup_leaves_late_native_owner(config, retire):
-    """Cancellation during a gated startup also orphans a late native owner.
+async def test_cancelled_delayed_startup_retires_late_native_owner(config, retire):
+    """Cancellation during a gated startup also retires the late native owner.
 
     The off-loop startup thread cannot be interrupted; the bounded stop
     drain gives up and releases the lease while the startup is in flight,
-    and the SDK spawns the native process afterwards.
+    the SDK spawns the native process afterwards, and the captured-client
+    cleanup retires it without the cleared session reference.
     """
     gate = threading.Event()
     entered = threading.Event()
@@ -701,6 +705,10 @@ async def test_cancelled_delayed_startup_leaves_late_native_owner(config, retire
     )
     process = vars(rpc)["process"]
     await wait_until(lambda: not session._active, timeout=_RESOLUTION_BOUND)
-    assert process.poll() is None
-    print(f"Q11 cancellation orphaned late native owner pid {process.pid}")
+    assert process.poll() is not None
+    assert not any(
+        vars(rpc)[name].is_alive()
+        for name in ("reader_thread", "writer_thread", "events_thread")
+    )
+    print(f"Q11 cancellation retired late native owner pid {process.pid}")
     await _retire_late_owner(rpc)

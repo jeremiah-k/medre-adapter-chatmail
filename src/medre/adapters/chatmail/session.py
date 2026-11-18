@@ -205,23 +205,57 @@ class ChatmailSession:
         if not self._closing:
             self.wake.set()
 
-    def _kill(self) -> None:
+    @staticmethod
+    def _kill(rpc: Any) -> None:
         # Rpc.__getattr__ synthesizes methods for every missing name.
         # Native process/thread attributes must be read from its instance.
-        process = vars(self.rpc).get("process") if self.rpc is not None else None
+        process = vars(rpc).get("process") if rpc is not None else None
         if process is not None and process.poll() is None:
             with contextlib.suppress(ProcessLookupError):
                 process.kill()
 
+    @staticmethod
+    def _alive(rpc: Any) -> bool:
+        attributes: dict[str, Any] = vars(rpc) if rpc is not None else {}
+        process = attributes.get("process")
+        events = attributes.get("events_thread")
+        return bool(
+            process is not None
+            and process.poll() is None
+            and events is not None
+            and events.is_alive()
+        )
+
+    def alive(self) -> bool:
+        return self._alive(self.rpc)
+
+    @staticmethod
+    def _retire(rpc: Any) -> None:
+        """Retire one captured client independent of the mutable self.rpc.
+
+        A native operation completing after stop() cleared self.rpc and
+        released the lease must still retire the native process it spawned;
+        the full close also drains the client threads a bare kill leaves
+        blocking interpreter exit. stop()'s own close task may retire the
+        same client concurrently, so every retirement failure is suppressed.
+        """
+        if rpc is None:
+            return
+        with contextlib.suppress(Exception):
+            ChatmailSession._close(rpc)
+
     async def _run(self, function: Callable[..., Any], *args: Any) -> Any:
+        rpc = self.rpc
+
         def invoke() -> Any:
             try:
                 return function(*args)
             finally:
-                # A startup completing after cancellation must not leave an
+                # A startup completing after cancellation, or after stop()
+                # cleared self.rpc and released the lease, must not leave an
                 # unowned native process alive.
                 if self._closing:
-                    self._kill()
+                    self._retire(rpc)
 
         task = asyncio.create_task(asyncio.to_thread(invoke))
         self._active.add(task)
@@ -232,14 +266,14 @@ class ChatmailSession:
             )
         except asyncio.CancelledError:
             self._closing = True
-            self._kill()
+            self._kill(rpc)
             raise
         except Exception as exc:
-            error_type = getattr(self.rpc, "error_type", ())
-            if isinstance(exc, error_type) and self.alive():
+            error_type = getattr(rpc, "error_type", ())
+            if isinstance(exc, error_type) and self._alive(rpc):
                 raise RpcCallError("Chatmail RPC request was rejected") from None
             self._closing = True
-            self._kill()
+            self._kill(rpc)
             raise SessionError(
                 "Chatmail RPC operation failed; inspect the native profile"
             ) from None
@@ -255,17 +289,6 @@ class ChatmailSession:
                 raise SessionError("Chatmail RPC session is unavailable")
             return await self._run(getattr(self.rpc, method), *args)
 
-    def alive(self) -> bool:
-        attributes: dict[str, Any] = vars(self.rpc) if self.rpc is not None else {}
-        process = attributes.get("process")
-        events = attributes.get("events_thread")
-        return bool(
-            process is not None
-            and process.poll() is None
-            and events is not None
-            and events.is_alive()
-        )
-
     async def stop(self, timeout: float = 5.0) -> None:
         self._closing = True
         rpc = self.rpc
@@ -276,14 +299,14 @@ class ChatmailSession:
                 try:
                     await asyncio.wait_for(asyncio.shield(close), max(timeout, 0.01))
                 except TimeoutError:
-                    self._kill()
+                    self._kill(rpc)
                     await asyncio.wait_for(asyncio.shield(close), _DRAIN_TIMEOUT)
                 except asyncio.CancelledError:
-                    self._kill()
+                    self._kill(rpc)
                     await asyncio.wait_for(asyncio.shield(close), _DRAIN_TIMEOUT)
                     raise
                 finally:
-                    self._kill()
+                    self._kill(rpc)
                     if self._active:
                         await asyncio.wait_for(
                             asyncio.shield(
@@ -307,7 +330,10 @@ class ChatmailSession:
         with contextlib.suppress(Exception):
             rpc.close()
         if process.poll() is None:
-            process.kill()
+            # A concurrent retirement of the same client may have killed the
+            # process between the poll and this kill.
+            with contextlib.suppress(ProcessLookupError):
+                process.kill()
         process.wait(timeout=2.0)
         for name in ("stdin", "stdout", "stderr"):
             stream = getattr(process, name, None)
