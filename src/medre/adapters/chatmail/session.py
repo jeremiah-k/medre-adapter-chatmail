@@ -185,6 +185,10 @@ class ChatmailSession:
             executable = await asyncio.to_thread(
                 server_path, self.config.rpc_server_path
             )
+            # stop() can run while executable discovery is off-thread. Do
+            # not construct a client after it retired this startup's lease.
+            if self._closing or self.lease is None:
+                raise SessionError("Chatmail RPC session is unavailable")
             self.rpc = self.rpc_factory(self.config.accounts_dir, executable, notify)
             await self._run(self.rpc.start)
             info = await self.call("get_system_info")
@@ -241,6 +245,11 @@ class ChatmailSession:
         """
         if rpc is None:
             return
+        # A late completion may no longer have a stop waiter to escalate a
+        # blocked graceful RPC close. Kill the captured process first, then
+        # drain the SDK client using the same dead-server close path.
+        with contextlib.suppress(Exception):
+            ChatmailSession._kill(rpc)
         with contextlib.suppress(Exception):
             ChatmailSession._close(rpc)
 

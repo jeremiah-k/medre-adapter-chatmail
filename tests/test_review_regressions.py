@@ -1,6 +1,7 @@
 """Recovery, admission isolation and attribution boundary regressions."""
 
 import asyncio
+import threading
 from dataclasses import replace
 from types import SimpleNamespace
 
@@ -122,3 +123,55 @@ def test_remote_labels_cannot_forge_attribution_lines(config, label):
         snapshot(sender={"isBlocked": False, "displayName": label}), timestamp=NOW
     )
     assert event.metadata.native.data["chatmail"]["sender_label"] == "contact 12"
+
+
+async def test_stop_during_executable_discovery_does_not_construct_client(
+    config, monkeypatch
+):
+    entered = threading.Event()
+    release = threading.Event()
+    clients = []
+
+    def discover(_path):
+        entered.set()
+        if not release.wait(5.0):
+            raise TimeoutError("test discovery gate did not release")
+        return "server"
+
+    def factory(*args):
+        clients.append(args)
+        raise AssertionError("retired startup constructed a client")
+
+    monkeypatch.setattr(boundary, "server_path", discover)
+    session = boundary.ChatmailSession(config, rpc_factory=factory)
+    start = asyncio.create_task(session.start())
+    try:
+        assert await asyncio.to_thread(entered.wait, 5.0)
+        await session.stop()
+        ProfileLease(config.accounts_dir).close()
+        release.set()
+        with pytest.raises(boundary.SessionError, match="unavailable"):
+            await asyncio.wait_for(start, 5.0)
+        assert clients == []
+        assert session.rpc is None and session.lease is None
+    finally:
+        release.set()
+        await asyncio.gather(start, return_exceptions=True)
+        await session.stop()
+
+
+def test_late_retirement_kills_before_graceful_client_close(monkeypatch):
+    calls = []
+    rpc = SimpleNamespace()
+    monkeypatch.setattr(
+        boundary.ChatmailSession,
+        "_kill",
+        staticmethod(lambda client: calls.append(("kill", client))),
+    )
+    monkeypatch.setattr(
+        boundary.ChatmailSession,
+        "_close",
+        staticmethod(lambda client: calls.append(("close", client))),
+    )
+    boundary.ChatmailSession._retire(rpc)
+    assert calls == [("kill", rpc), ("close", rpc)]

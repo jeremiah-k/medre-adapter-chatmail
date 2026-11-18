@@ -143,11 +143,15 @@ that drain completes. A pending native call surfaces a session error once the
 process dies instead of blocking its caller or interpreter exit, and a
 replacement session may start immediately after shutdown. A native operation
 that completes after shutdown has released the lease MUST retire the client
-that operation captured: the late-started native process is killed, its client
-threads are drained and its pipes closed, so no native owner outlives the
-shutdown that cancelled or timed out. A replacement that starts during that
-residual completion window is refused by the native `accounts.lock` and
-surfaces the bounded retryable start failure.
+that operation captured: kill the late-started process before invoking the
+SDK close path, even when no stop waiter remains to escalate blocked RPC
+close. Drain the client and close its pipes; retirement remains best effort
+if the SDK or OS itself cannot complete the close. No graceful RPC request
+may be required before killing a late owner. Stop during executable discovery
+MUST prevent subsequent client construction after lease release. During the
+residual completion window, the native `accounts.lock` prevents two native
+managers from acquiring the same accounts database. A competing startup
+that loses the lock surfaces a bounded retryable start failure.
 Peer display labels MUST be printable on one line before relay attribution.
 
 ## Per-message native attribution
