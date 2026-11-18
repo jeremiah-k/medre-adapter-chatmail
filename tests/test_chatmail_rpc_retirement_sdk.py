@@ -575,50 +575,60 @@ async def test_stop_during_delayed_startup_retires_late_native_owner(config, ret
         )
     )
     start_task = asyncio.create_task(session.start())
-    await wait_until(entered.is_set, timeout=_RESOLUTION_BOUND)
-    started = time.monotonic()
-    with pytest.raises(TimeoutError):
-        await asyncio.wait_for(session.stop(timeout=0.05), 8)
-    stop_elapsed = time.monotonic() - started
-    print(
-        f"Q7 stop drain during gated startup cleared the reference and "
-        f"released the lease in {stop_elapsed:.3f}s"
-    )
-    assert session.lease is None and session.rpc is None
-    assert not start_task.done()
-    # Late birth: the unmodified SDK creates the native process after the
-    # owner reference and the profile lease are already gone.
-    gate.set()
-    rpc = created[0]
-    await wait_until(
-        lambda: vars(rpc).get("process") is not None, timeout=_RESOLUTION_BOUND
-    )
-    process = vars(rpc)["process"]
-    await wait_until(lambda: not session._active, timeout=_RESOLUTION_BOUND)
-    with pytest.raises(SessionError, match="unavailable"):
-        await asyncio.wait_for(start_task, _RESOLUTION_BOUND)
-    # The late-completion cleanup retired the captured client: the process
-    # is dead and its SDK client threads cannot block interpreter exit.
-    assert process.poll() is not None
-    assert not any(
-        vars(rpc)[name].is_alive()
-        for name in ("reader_thread", "writer_thread", "events_thread")
-    )
-    print(f"Q8 late native owner pid {process.pid} retired after the cleared reference")
-    # A replacement acquires the released lease and starts without the
-    # native accounts.lock refusal an unretired owner would force.
-    replacement = retire(ChatmailSession(config))
-    started = time.monotonic()
-    await replacement.start()
-    start_elapsed = time.monotonic() - started
-    print(
-        f"Q9 replacement started in {start_elapsed:.3f}s without the "
-        f"native lock refusal"
-    )
-    assert start_elapsed < 2.0
-    assert isinstance(await replacement.call("get_system_info"), dict)
-    await replacement.stop(timeout=1)
-    await _retire_late_owner(rpc)
+    try:
+        await wait_until(entered.is_set, timeout=_RESOLUTION_BOUND)
+        started = time.monotonic()
+        with pytest.raises(TimeoutError):
+            await asyncio.wait_for(session.stop(timeout=0.05), 8)
+        stop_elapsed = time.monotonic() - started
+        print(
+            f"Q7 stop drain during gated startup cleared the reference and "
+            f"released the lease in {stop_elapsed:.3f}s"
+        )
+        assert session.lease is None and session.rpc is None
+        assert not start_task.done()
+        # Late birth: the unmodified SDK creates the native process after the
+        # owner reference and the profile lease are already gone.
+        gate.set()
+        rpc = created[0]
+        await wait_until(
+            lambda: vars(rpc).get("process") is not None, timeout=_RESOLUTION_BOUND
+        )
+        process = vars(rpc)["process"]
+        await wait_until(lambda: not session._active, timeout=_RESOLUTION_BOUND)
+        with pytest.raises(SessionError, match="unavailable"):
+            await asyncio.wait_for(start_task, _RESOLUTION_BOUND)
+        # The late-completion cleanup retired the captured client: the process
+        # is dead and its SDK client threads cannot block interpreter exit.
+        assert process.poll() is not None
+        assert not any(
+            vars(rpc)[name].is_alive()
+            for name in ("reader_thread", "writer_thread", "events_thread")
+        )
+        print(
+            f"Q8 late native owner pid {process.pid} retired after the cleared reference"
+        )
+        # A replacement acquires the released lease and starts without the
+        # native accounts.lock refusal an unretired owner would force.
+        replacement = retire(ChatmailSession(config))
+        started = time.monotonic()
+        await replacement.start()
+        start_elapsed = time.monotonic() - started
+        print(
+            f"Q9 replacement started in {start_elapsed:.3f}s without the "
+            f"native lock refusal"
+        )
+        assert start_elapsed < 2.0
+        assert isinstance(await replacement.call("get_system_info"), dict)
+        await replacement.stop(timeout=1)
+    finally:
+        gate.set()
+        try:
+            with contextlib.suppress(Exception, asyncio.CancelledError):
+                await asyncio.wait_for(asyncio.shield(start_task), 30.0)
+        finally:
+            for captured in created:
+                await _retire_late_owner(captured)
 
 
 @pytest.mark.timeout(60)
@@ -638,40 +648,48 @@ async def test_late_birth_coexists_with_replacement_owner(config, retire):
         )
     )
     start_task = asyncio.create_task(session.start())
-    await wait_until(entered.is_set, timeout=_RESOLUTION_BOUND)
-    with pytest.raises(TimeoutError):
-        await asyncio.wait_for(session.stop(timeout=0.05), 8)
-    replacement = retire(ChatmailSession(config))
-    await replacement.start()
-    replacement_process = vars(replacement.rpc)["process"]
-    assert replacement_process.poll() is None
-    # Late birth against the live native owner.
-    gate.set()
-    rpc = created[0]
-    await wait_until(
-        lambda: vars(rpc).get("process") is not None, timeout=_RESOLUTION_BOUND
-    )
-    late_process = vars(rpc)["process"]
-    assert late_process.poll() is None
-    print(
-        f"Q10 two native server processes coexisted on one profile: "
-        f"{replacement_process.pid} (replacement owner) and "
-        f"{late_process.pid} (late candidate)"
-    )
-    # The native accounts.lock refuses the candidate; it exits without
-    # displacing the owner and the profile stays usable. The late owner's
-    # client threads are drained by its own captured-client retirement.
-    with pytest.raises(SessionError, match="inspect the native profile"):
-        await asyncio.wait_for(start_task, 30.0)
-    assert late_process.poll() is not None
-    assert replacement_process.poll() is None
-    assert not any(
-        vars(rpc)[name].is_alive()
-        for name in ("reader_thread", "writer_thread", "events_thread")
-    )
-    assert isinstance(await replacement.call("get_system_info"), dict)
-    await replacement.stop(timeout=1)
-    await _retire_late_owner(rpc)
+    try:
+        await wait_until(entered.is_set, timeout=_RESOLUTION_BOUND)
+        with pytest.raises(TimeoutError):
+            await asyncio.wait_for(session.stop(timeout=0.05), 8)
+        replacement = retire(ChatmailSession(config))
+        await replacement.start()
+        replacement_process = vars(replacement.rpc)["process"]
+        assert replacement_process.poll() is None
+        # Late birth against the live native owner.
+        gate.set()
+        rpc = created[0]
+        await wait_until(
+            lambda: vars(rpc).get("process") is not None, timeout=_RESOLUTION_BOUND
+        )
+        late_process = vars(rpc)["process"]
+        assert late_process.pid != replacement_process.pid
+        print(
+            f"Q10 late candidate and replacement process identities: "
+            f"{replacement_process.pid} (replacement owner) and "
+            f"{late_process.pid} (late candidate)"
+        )
+        # The native accounts.lock refuses the candidate; it exits without
+        # displacing the owner and the profile stays usable. The late owner's
+        # client threads are drained by its own captured-client retirement.
+        with pytest.raises(SessionError, match="inspect the native profile"):
+            await asyncio.wait_for(start_task, 30.0)
+        assert late_process.poll() is not None
+        assert replacement_process.poll() is None
+        assert not any(
+            vars(rpc)[name].is_alive()
+            for name in ("reader_thread", "writer_thread", "events_thread")
+        )
+        assert isinstance(await replacement.call("get_system_info"), dict)
+        await replacement.stop(timeout=1)
+    finally:
+        gate.set()
+        try:
+            with contextlib.suppress(Exception, asyncio.CancelledError):
+                await asyncio.wait_for(asyncio.shield(start_task), 30.0)
+        finally:
+            for captured in created:
+                await _retire_late_owner(captured)
 
 
 @pytest.mark.timeout(60)
@@ -692,23 +710,31 @@ async def test_cancelled_delayed_startup_retires_late_native_owner(config, retir
         )
     )
     start_task = asyncio.create_task(session.start())
-    await wait_until(entered.is_set, timeout=_RESOLUTION_BOUND)
-    start_task.cancel()
-    await wait_until(start_task.done, timeout=8.0)
-    with pytest.raises(TimeoutError):
-        start_task.result()
-    assert session.lease is None and session.rpc is None
-    gate.set()
-    rpc = created[0]
-    await wait_until(
-        lambda: vars(rpc).get("process") is not None, timeout=_RESOLUTION_BOUND
-    )
-    process = vars(rpc)["process"]
-    await wait_until(lambda: not session._active, timeout=_RESOLUTION_BOUND)
-    assert process.poll() is not None
-    assert not any(
-        vars(rpc)[name].is_alive()
-        for name in ("reader_thread", "writer_thread", "events_thread")
-    )
-    print(f"Q11 cancellation retired late native owner pid {process.pid}")
-    await _retire_late_owner(rpc)
+    try:
+        await wait_until(entered.is_set, timeout=_RESOLUTION_BOUND)
+        start_task.cancel()
+        await wait_until(start_task.done, timeout=8.0)
+        with pytest.raises(TimeoutError):
+            start_task.result()
+        assert session.lease is None and session.rpc is None
+        gate.set()
+        rpc = created[0]
+        await wait_until(
+            lambda: vars(rpc).get("process") is not None, timeout=_RESOLUTION_BOUND
+        )
+        process = vars(rpc)["process"]
+        await wait_until(lambda: not session._active, timeout=_RESOLUTION_BOUND)
+        assert process.poll() is not None
+        assert not any(
+            vars(rpc)[name].is_alive()
+            for name in ("reader_thread", "writer_thread", "events_thread")
+        )
+        print(f"Q11 cancellation retired late native owner pid {process.pid}")
+    finally:
+        gate.set()
+        try:
+            with contextlib.suppress(Exception, asyncio.CancelledError):
+                await asyncio.wait_for(asyncio.shield(start_task), 30.0)
+        finally:
+            for captured in created:
+                await _retire_late_owner(captured)
