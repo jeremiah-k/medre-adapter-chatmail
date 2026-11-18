@@ -1,6 +1,7 @@
 """Recovery, admission isolation and attribution boundary regressions."""
 
 import asyncio
+import threading
 from dataclasses import replace
 from types import SimpleNamespace
 
@@ -122,3 +123,170 @@ def test_remote_labels_cannot_forge_attribution_lines(config, label):
         snapshot(sender={"isBlocked": False, "displayName": label}), timestamp=NOW
     )
     assert event.metadata.native.data["chatmail"]["sender_label"] == "contact 12"
+
+
+async def test_stop_during_executable_discovery_does_not_construct_client(
+    config, monkeypatch
+):
+    entered = threading.Event()
+    release = threading.Event()
+    clients = []
+
+    def discover(_path):
+        entered.set()
+        if not release.wait(5.0):
+            raise TimeoutError("test discovery gate did not release")
+        return "server"
+
+    def factory(*args):
+        clients.append(args)
+        raise AssertionError("retired startup constructed a client")
+
+    monkeypatch.setattr(boundary, "server_path", discover)
+    session = boundary.ChatmailSession(config, rpc_factory=factory)
+    start = asyncio.create_task(session.start())
+    try:
+        assert await asyncio.to_thread(entered.wait, 5.0)
+        await session.stop()
+        ProfileLease(config.accounts_dir).close()
+        release.set()
+        with pytest.raises(boundary.SessionError, match="unavailable"):
+            await asyncio.wait_for(start, 5.0)
+        assert clients == []
+        assert session.rpc is None and session.lease is None
+    finally:
+        release.set()
+        await asyncio.gather(start, return_exceptions=True)
+        await session.stop()
+
+
+def test_late_retirement_kills_before_graceful_client_close(monkeypatch):
+    calls = []
+    rpc = SimpleNamespace()
+    monkeypatch.setattr(
+        boundary.ChatmailSession,
+        "_kill",
+        staticmethod(lambda client: calls.append(("kill", client))),
+    )
+    monkeypatch.setattr(
+        boundary.ChatmailSession,
+        "_close",
+        staticmethod(lambda client: calls.append(("close", client))),
+    )
+    boundary.ChatmailSession._retire(rpc)
+    assert calls == [("kill", rpc), ("close", rpc)]
+
+
+@pytest.mark.parametrize("outcome", ["success", "failure", "cancelled"])
+async def test_inflight_rpc_does_not_steal_graceful_close(config, monkeypatch, outcome):
+    session = boundary.ChatmailSession(config)
+    session.rpc = SimpleNamespace(process=None)
+    entered = threading.Event()
+    release_call = threading.Event()
+    close_entered = threading.Event()
+    release_close = threading.Event()
+    kills = []
+
+    def call():
+        entered.set()
+        assert release_call.wait(5)
+        if outcome == "failure":
+            raise RuntimeError("RPC failed")
+        return "ok"
+
+    def close(_rpc):
+        close_entered.set()
+        assert release_close.wait(5)
+
+    monkeypatch.setattr(session, "_close", close)
+    monkeypatch.setattr(session, "_kill", lambda rpc: kills.append(rpc))
+    operation = asyncio.create_task(session._run(call))
+    shutdown = None
+    try:
+        assert await asyncio.to_thread(entered.wait, 5)
+        shutdown = asyncio.create_task(session.stop(timeout=5))
+        assert await asyncio.to_thread(close_entered.wait, 5)
+        if outcome == "cancelled":
+            operation.cancel()
+        release_call.set()
+        if outcome == "cancelled":
+            with pytest.raises(asyncio.CancelledError):
+                await asyncio.wait_for(operation, 5)
+        elif outcome == "failure":
+            with pytest.raises(boundary.SessionError, match="RPC operation failed"):
+                await asyncio.wait_for(operation, 5)
+        else:
+            assert await asyncio.wait_for(operation, 5) == "ok"
+        assert not kills
+        assert not shutdown.done()
+        release_close.set()
+        await asyncio.wait_for(shutdown, 5)
+    finally:
+        release_call.set()
+        release_close.set()
+        await asyncio.gather(
+            operation, *([shutdown] if shutdown else []), return_exceptions=True
+        )
+
+
+async def test_retired_startup_kills_process_before_health_reply(config, monkeypatch):
+    """Model the pinned publication seam with a real child and no health reply."""
+    import subprocess
+    import sys
+    from types import ModuleType
+
+    entered = threading.Event()
+    release = threading.Event()
+    created = []
+
+    class Rpc:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def start(self):
+            entered.set()
+            assert release.wait(5)
+            self.process = subprocess.Popen(
+                [sys.executable, "-c", "import time; time.sleep(60)"]
+            )
+            # The SDK health request waits for the child to answer. No reply
+            # is possible here; only retirement at publication can unblock it.
+            self.process.wait(timeout=5)
+            raise RuntimeError("health reply unavailable")
+
+        def close(self):
+            pass
+
+    sdk = ModuleType("deltachat_rpc_client")
+    rpc_module = ModuleType("deltachat_rpc_client.rpc")
+    sdk.Rpc = Rpc
+    rpc_module.JsonRpcError = RuntimeError
+    monkeypatch.setitem(sys.modules, "deltachat_rpc_client", sdk)
+    monkeypatch.setitem(sys.modules, "deltachat_rpc_client.rpc", rpc_module)
+    monkeypatch.setattr(boundary, "server_path", lambda _: "server")
+    monkeypatch.setattr(boundary, "_DRAIN_TIMEOUT", 0.02)
+
+    def factory(*args):
+        client = boundary.build_rpc(*args)
+        created.append(client)
+        return client
+
+    session = boundary.ChatmailSession(config, rpc_factory=factory)
+    start = asyncio.create_task(session.start())
+    try:
+        assert await asyncio.to_thread(entered.wait, 5)
+        with pytest.raises(TimeoutError):
+            await session.stop(timeout=0.02)
+        assert session.lease is None and session.rpc is None
+        ProfileLease(config.accounts_dir).close()
+        release.set()
+        with pytest.raises(boundary.SessionError):
+            await asyncio.wait_for(start, 5)
+        assert created[0].process.poll() is not None
+        assert not session._active
+    finally:
+        release.set()
+        for client in created:
+            boundary.ChatmailSession._kill(client)
+        await asyncio.gather(start, return_exceptions=True)
+        await session.stop()
