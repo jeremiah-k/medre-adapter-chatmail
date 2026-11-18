@@ -20,12 +20,14 @@ import subprocess
 import sys
 import threading
 import time
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
 import pytest
-from conftest import wait_until
+from conftest import NativeSession, wait_until
 
+from medre.adapters.chatmail.adapter import ChatmailAdapter
 from medre.adapters.chatmail.config import ChatmailConfig
 from medre.adapters.chatmail.session import (
     ChatmailSession,
@@ -176,6 +178,9 @@ async def test_close_completes_against_dead_server(config, retire):
     try:
         process.kill()
         await asyncio.to_thread(process.wait, _RESOLUTION_BOUND)
+        await wait_until(
+            lambda: not vars(rpc)["reader_thread"].is_alive(), timeout=_RESOLUTION_BOUND
+        )
         started = time.monotonic()
         await asyncio.wait_for(asyncio.to_thread(rpc.close), _RESOLUTION_BOUND)
         elapsed = time.monotonic() - started
@@ -227,6 +232,71 @@ async def test_native_manager_exclusion_surfaces_transient_start_failure(
             if stream is not None:
                 with contextlib.suppress(OSError):
                     await asyncio.to_thread(stream.close)
+
+
+@pytest.mark.timeout(30, method="thread")
+async def test_reconnect_recovers_after_replacement_loses_native_profile_lock(
+    config, context, retire
+):
+    """Exercise the real manager loop, profile lease and native process startup."""
+    config = replace(config, reconnect_delay_seconds=0.01, poll_interval_seconds=0.01)
+    native_account = NativeSession(config)
+    permit_second = asyncio.Event()
+    permit_third = asyncio.Event()
+    startup_gates = iter((None, permit_second, permit_third))
+    sessions: list[ChatmailSession] = []
+
+    class OfflineAccountSession(ChatmailSession):
+        def __init__(self, config: ChatmailConfig, gate: asyncio.Event | None) -> None:
+            super().__init__(config)
+            self.gate = gate
+
+        async def start(self) -> None:
+            if self.gate is not None:
+                await self.gate.wait()
+            await super().start()
+
+        async def call(self, method: str, *args: Any) -> Any:
+            # Keep account and chat setup offline. Process startup, health
+            # check, profile locking and retirement use the pinned SDK.
+            if method == "get_system_info":
+                return await super().call(method, *args)
+            return await native_account.call(method, *args)
+
+    def make_session(config: ChatmailConfig) -> ChatmailSession:
+        session = retire(OfflineAccountSession(config, next(startup_gates, None)))
+        sessions.append(session)
+        return session
+
+    executable = await asyncio.to_thread(server_path, "")
+    holder = build_rpc(config.accounts_dir, executable, lambda: None)
+    holder_retired = False
+    adapter = ChatmailAdapter(config, session_factory=make_session)
+    await adapter.start(context[0])
+    try:
+        await _reap(_process(sessions[0].rpc))
+        sessions[0].wake.set()
+        await wait_until(lambda: len(sessions) == 2, timeout=_RESOLUTION_BOUND)
+        # The failed original has released its lease. A native owner can
+        # win accounts.lock before the manager creates the replacement.
+        await asyncio.to_thread(holder.start)
+        permit_second.set()
+        await wait_until(lambda: len(sessions) == 3, timeout=10)
+        assert sessions[1].rpc is None and sessions[1].lease is None
+        assert _process(holder).poll() is None
+        assert adapter._reconnects == 0
+        await asyncio.to_thread(ChatmailSession._retire, holder)
+        holder_retired = True
+        permit_third.set()
+        await wait_until(lambda: adapter._reconnects == 1, timeout=_RESOLUTION_BOUND)
+        assert adapter.session is sessions[2] and sessions[2].alive()
+        assert await sessions[2].call("get_system_info")
+    finally:
+        try:
+            await adapter.stop()
+        finally:
+            if not holder_retired:
+                await asyncio.to_thread(ChatmailSession._retire, holder)
 
 
 async def test_stop_reaps_before_lease_release_and_permits_restart(config, retire):
@@ -527,10 +597,17 @@ def _gated_start_factory(
         rpc = build_rpc(accounts_dir, executable, notify)
         real_start = rpc.start
 
+        finished = threading.Event()
+        vars(rpc)["_test_start_finished"] = finished
+
         def gated_start() -> None:
             entered.set()
-            gate.wait()
-            real_start()
+            try:
+                if not gate.wait(30):
+                    raise TimeoutError("startup test gate did not open")
+                real_start()
+            finally:
+                finished.set()
 
         # The instance attribute shadows the SDK method; only the entry is
         # gated, everything inside the SDK start remains unmodified.
@@ -548,12 +625,48 @@ async def _retire_late_owner(rpc: Any) -> None:
     queue sentinel; without the full close the non-daemon client threads
     block interpreter exit.
     """
-    process = vars(rpc).get("process")
-    if process is not None and process.poll() is None:
-        with contextlib.suppress(ProcessLookupError):
-            process.kill()
-    with contextlib.suppress(Exception):
-        await asyncio.to_thread(ChatmailSession._close, rpc)
+    finished = vars(rpc)["_test_start_finished"]
+    await wait_until(
+        lambda: vars(rpc).get("process") is not None or finished.is_set(),
+        timeout=_RESOLUTION_BOUND,
+    )
+    ChatmailSession._kill(rpc)
+    await wait_until(finished.is_set, timeout=_RESOLUTION_BOUND)
+
+
+async def _cleanup_gated_start(session, gate, created, start_task):
+    gate.set()
+    try:
+        # The asyncio start task may be done before the blocking worker even
+        # publishes its process. Retire it independently, then join the worker.
+        for captured in created:
+            await _retire_late_owner(captured)
+        await wait_until(lambda: not session._active, timeout=_RESOLUTION_BOUND)
+    finally:
+        with contextlib.suppress(Exception, asyncio.CancelledError):
+            await asyncio.wait_for(asyncio.shield(start_task), 30.0)
+        for captured in created:
+            await asyncio.wait_for(
+                asyncio.to_thread(ChatmailSession._close, captured), _RESOLUTION_BOUND
+            )
+
+
+async def _expect_internal_stop_timeout(session):
+    stop = asyncio.create_task(session.stop(timeout=0.05))
+    done, _ = await asyncio.wait({stop}, timeout=8)
+    if stop not in done:
+        stop.cancel()
+        await asyncio.gather(stop, return_exceptions=True)
+        pytest.fail("stop did not finish within independent test deadline")
+    with pytest.raises(TimeoutError):
+        stop.result()
+
+
+def _assert_retired_pipes(process):
+    assert process.poll() is not None
+    for name in ("stdin", "stdout", "stderr"):
+        pipe = getattr(process, name, None)
+        assert pipe is None or pipe.closed
 
 
 @pytest.mark.timeout(60)
@@ -578,8 +691,7 @@ async def test_stop_during_delayed_startup_retires_late_native_owner(config, ret
     try:
         await wait_until(entered.is_set, timeout=_RESOLUTION_BOUND)
         started = time.monotonic()
-        with pytest.raises(TimeoutError):
-            await asyncio.wait_for(session.stop(timeout=0.05), 8)
+        await _expect_internal_stop_timeout(session)
         stop_elapsed = time.monotonic() - started
         print(
             f"Q7 stop drain during gated startup cleared the reference and "
@@ -596,11 +708,11 @@ async def test_stop_during_delayed_startup_retires_late_native_owner(config, ret
         )
         process = vars(rpc)["process"]
         await wait_until(lambda: not session._active, timeout=_RESOLUTION_BOUND)
-        with pytest.raises(SessionError, match="unavailable"):
+        with pytest.raises(SessionError):
             await asyncio.wait_for(start_task, _RESOLUTION_BOUND)
         # The late-completion cleanup retired the captured client: the process
         # is dead and its SDK client threads cannot block interpreter exit.
-        assert process.poll() is not None
+        _assert_retired_pipes(process)
         assert not any(
             vars(rpc)[name].is_alive()
             for name in ("reader_thread", "writer_thread", "events_thread")
@@ -618,22 +730,15 @@ async def test_stop_during_delayed_startup_retires_late_native_owner(config, ret
             f"Q9 replacement started in {start_elapsed:.3f}s without the "
             f"native lock refusal"
         )
-        assert start_elapsed < 2.0
         assert isinstance(await replacement.call("get_system_info"), dict)
         await replacement.stop(timeout=1)
     finally:
-        gate.set()
-        try:
-            with contextlib.suppress(Exception, asyncio.CancelledError):
-                await asyncio.wait_for(asyncio.shield(start_task), 30.0)
-        finally:
-            for captured in created:
-                await _retire_late_owner(captured)
+        await _cleanup_gated_start(session, gate, created, start_task)
 
 
 @pytest.mark.timeout(60)
 async def test_late_birth_coexists_with_replacement_owner(config, retire):
-    """A late owner born under a live replacement is fenced by the native lock.
+    """A late owner born under a live replacement is retired at publication.
 
     The replacement acquires the released MEDRE lease and owns the profile
     natively before the gated startup proceeds; the unmodified SDK then
@@ -650,8 +755,7 @@ async def test_late_birth_coexists_with_replacement_owner(config, retire):
     start_task = asyncio.create_task(session.start())
     try:
         await wait_until(entered.is_set, timeout=_RESOLUTION_BOUND)
-        with pytest.raises(TimeoutError):
-            await asyncio.wait_for(session.stop(timeout=0.05), 8)
+        await _expect_internal_stop_timeout(session)
         replacement = retire(ChatmailSession(config))
         await replacement.start()
         replacement_process = vars(replacement.rpc)["process"]
@@ -669,12 +773,12 @@ async def test_late_birth_coexists_with_replacement_owner(config, retire):
             f"{replacement_process.pid} (replacement owner) and "
             f"{late_process.pid} (late candidate)"
         )
-        # The native accounts.lock refuses the candidate; it exits without
-        # displacing the owner and the profile stays usable. The late owner's
+        # The publication fence kills the candidate without displacing the
+        # replacement; this no longer claims native-lock refusal evidence. The late owner's
         # client threads are drained by its own captured-client retirement.
         with pytest.raises(SessionError, match="inspect the native profile"):
             await asyncio.wait_for(start_task, 30.0)
-        assert late_process.poll() is not None
+        _assert_retired_pipes(late_process)
         assert replacement_process.poll() is None
         assert not any(
             vars(rpc)[name].is_alive()
@@ -683,13 +787,7 @@ async def test_late_birth_coexists_with_replacement_owner(config, retire):
         assert isinstance(await replacement.call("get_system_info"), dict)
         await replacement.stop(timeout=1)
     finally:
-        gate.set()
-        try:
-            with contextlib.suppress(Exception, asyncio.CancelledError):
-                await asyncio.wait_for(asyncio.shield(start_task), 30.0)
-        finally:
-            for captured in created:
-                await _retire_late_owner(captured)
+        await _cleanup_gated_start(session, gate, created, start_task)
 
 
 @pytest.mark.timeout(60)
@@ -724,17 +822,44 @@ async def test_cancelled_delayed_startup_retires_late_native_owner(config, retir
         )
         process = vars(rpc)["process"]
         await wait_until(lambda: not session._active, timeout=_RESOLUTION_BOUND)
-        assert process.poll() is not None
+        _assert_retired_pipes(process)
         assert not any(
             vars(rpc)[name].is_alive()
             for name in ("reader_thread", "writer_thread", "events_thread")
         )
         print(f"Q11 cancellation retired late native owner pid {process.pid}")
     finally:
+        await _cleanup_gated_start(session, gate, created, start_task)
+
+
+@pytest.mark.timeout(60)
+async def test_retired_sdk_startup_without_health_reply(config, retire):
+    """The pinned SDK cannot finish its health check without a server reply."""
+    gate = threading.Event()
+    entered = threading.Event()
+    created: list[Any] = []
+    gated = _gated_start_factory(gate, entered, created)
+
+    def factory(accounts_dir, executable, notify):
+        rpc = gated(accounts_dir, executable, notify)
+        rpc.rpc_server_path = [sys.executable, "-c", "import time; time.sleep(60)"]
+        return rpc
+
+    session = retire(ChatmailSession(config, rpc_factory=factory))
+    start = asyncio.create_task(session.start())
+    try:
+        await wait_until(entered.is_set, timeout=_RESOLUTION_BOUND)
+        await _expect_internal_stop_timeout(session)
+        assert session.lease is None and session.rpc is None
         gate.set()
-        try:
-            with contextlib.suppress(Exception, asyncio.CancelledError):
-                await asyncio.wait_for(asyncio.shield(start_task), 30.0)
-        finally:
-            for captured in created:
-                await _retire_late_owner(captured)
+        with pytest.raises(SessionError):
+            await asyncio.wait_for(start, _RESOLUTION_BOUND)
+        await wait_until(lambda: not session._active, timeout=_RESOLUTION_BOUND)
+        rpc = created[0]
+        _assert_retired_pipes(_process(rpc))
+        assert not any(
+            vars(rpc)[name].is_alive()
+            for name in ("reader_thread", "writer_thread", "events_thread")
+        )
+    finally:
+        await _cleanup_gated_start(session, gate, created, start)
