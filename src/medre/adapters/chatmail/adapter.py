@@ -31,6 +31,7 @@ from medre.core.supervision.diagnostic_contract import COMMON_DIAGNOSTIC_KEYS
 from .codec import ChatmailCodec, chat_facts, native_id
 from .config import ChatmailConfig, plain_text, sender_name
 from .session import ChatmailSession, RpcCallError, SessionError
+from .startup_info import build_startup_info
 from .state import Journal, PendingLimitError
 
 CAPABILITIES = AdapterCapabilities(
@@ -727,6 +728,22 @@ class ChatmailAdapter(AdapterContract):
             "account_id": self.config.account_id,
             "configured_chats": len(self.config.chats),
         }
+
+    def startup_info(self) -> dict[str, Any]:
+        """Facts the adapter already holds, for core's startup block.
+
+        Core duck-types this callable at the ready transition and renders
+        the returned scalar facts; display ordering and caps are core's
+        business.  Pure read: no RPC or native I/O, no resource
+        acquisition, no session mutation — the profile identity is a
+        single attribute read of state captured at connect time, safe to
+        call from any worker thread.  Facts not held yet (the native
+        profile before a session connects, an installed client version
+        when the package is absent) are omitted rather than probed, and
+        the RPC server's version is never queried: startup info never
+        gates, blocks, or delays the native session.
+        """
+        return build_startup_info(self.config, profile=self._profile or None)
 
     def _native_task_done(self, task: asyncio.Task[None], epoch: int) -> None:
         """Observe unexpected native-owner exit, including cancellation before first execution."""
