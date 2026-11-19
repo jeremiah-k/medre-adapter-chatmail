@@ -1,14 +1,6 @@
-# Expose startup-info facts at the ready transition
+# Report the selected Chatmail account at startup
 
-The adapter now offers a pure-read `startup_info()` provider that core
-discovers duck-typed and renders at the adapter's ready transition. It
-reports the configured account identity, the native profile identity
-captured at connect time, and the installed `deltachat-rpc-client`
-distribution version read from package metadata (never a source
-literal). The native RPC server's version is only knowable through RPC
-traffic, so it is never probed; facts that are not held yet are omitted
-rather than gathered. The hook performs no RPC, native, or filesystem
-I/O, mutates no session state, and never gates, blocks, or delays
-readiness — failure or timeout simply yields no facts. Fake adapters
-mirror the same seam through the shared builder without ever reporting
-a profile.
+The startup block shows the configured account number and the installed
+Delta Chat RPC client version when available. The native profile directory
+identifier stays in the recovery ledger. Startup reporting reads package
+metadata and configuration without querying the RPC server.

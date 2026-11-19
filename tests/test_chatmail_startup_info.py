@@ -1,27 +1,4 @@
-"""Startup-info provider: duck-typed emission of held Chatmail facts.
-
-Covers:
-- ``startup_info`` is discovered duck-typed on the adapter object (real
-  and fake).
-- Facts come only from already-held state: the configured account
-  identity, the native profile identity captured at connect time, and
-  the installed ``deltachat-rpc-client`` distribution version read via
-  ``importlib.metadata`` (never a source literal — the pin-hygiene
-  guard keeps pins in pyproject only).
-- Facts not held at ready (the native profile before a session
-  connects, a client version when the package is absent) are omitted,
-  never probed.  The RPC server's version is knowable only through RPC
-  traffic and is never queried.
-- Pure read: calling the hook mutates no adapter or session state and
-  is safe on a worker thread, matching core's off-loop invocation.
-- Configured account facts render in full through core's redaction
-  boundary.
-
-Core-side collection/rendering symbols are imported in tests only; the
-adapter source must not import them.  Fake sessions only — no native
-RPC traffic, no account I/O.  See core
-``docs/spec/adapter-startup-info.md``.
-"""
+"""Verify the Chatmail startup boundary around account and SDK facts."""
 
 from __future__ import annotations
 
@@ -64,11 +41,8 @@ def _make_config(**overrides: Any) -> ChatmailConfig:
     return ChatmailConfig("mail", **defaults)
 
 
-def _account_row(profile: str | None = None) -> list[dict[str, Any]]:
-    row: list[dict[str, Any]] = [{"name": "account_id", "value": 1, "label": "account"}]
-    if profile is not None:
-        row.append({"name": "profile", "value": profile, "label": "profile"})
-    return row
+def _account_row() -> list[dict[str, Any]]:
+    return [{"name": "account_id", "value": 1, "label": "account"}]
 
 
 def _installed_client_version() -> str | None:
@@ -79,8 +53,8 @@ def _installed_client_version() -> str | None:
         return None
 
 
-def _expected_rows(profile: str | None = None) -> dict[str, Any]:
-    rows: list[list[dict[str, Any]]] = [_account_row(profile)]
+def _expected_rows() -> dict[str, Any]:
+    rows: list[list[dict[str, Any]]] = [_account_row()]
     client_version = _installed_client_version()
     if client_version is not None:
         rows.append(
@@ -131,14 +105,10 @@ def test_fresh_adapter_omits_unheld_facts(monkeypatch: pytest.MonkeyPatch) -> No
     assert adapter.startup_info() == {"rows": [_account_row()]}
 
 
-async def test_connected_session_reports_held_profile(config, context) -> None:
-    """The connect path captures the native profile and reports it.
-
-    Mirrors production without any native RPC: a fake session answers
-    the same calls the connect path issues, the adapter captures the
-    blob-directory parent name, and startup info reports the held
-    account and profile facts.
-    """
+async def test_connected_session_keeps_the_native_profile_out_of_startup(
+    config, context
+) -> None:
+    """The recovery profile is retained internally and absent from display facts."""
     from tests.conftest import NativeSession
 
     ctx, _ = context
@@ -146,7 +116,8 @@ async def test_connected_session_reports_held_profile(config, context) -> None:
     adapter = ChatmailAdapter(config, session_factory=lambda _: session)
     await adapter.start(ctx)
     try:
-        assert adapter.startup_info() == _expected_rows(_SYNTHETIC_PROFILE)
+        assert adapter._profile == _SYNTHETIC_PROFILE
+        assert adapter.startup_info() == _expected_rows()
     finally:
         await adapter.stop()
 
@@ -216,7 +187,7 @@ def test_startup_info_snapshot_is_safe_from_worker_threads() -> None:
     with ThreadPoolExecutor(max_workers=4) as pool:
         payloads = list(pool.map(lambda _: adapter.startup_info(), range(32)))
     assert all(payload == payloads[0] for payload in payloads)
-    assert payloads[0] == _expected_rows(_SYNTHETIC_PROFILE)
+    assert payloads[0] == _expected_rows()
 
 
 def test_provider_module_imports_nothing_from_core() -> None:
@@ -252,8 +223,7 @@ def test_adapter_and_fake_import_the_shared_builder() -> None:
 async def test_adapter_emits_held_facts_through_core(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Core's supervised collection preserves rows and renders the held
-    account and profile facts in full."""
+    """Core renders the account without the internal profile identifier."""
     monkeypatch.setattr(startup_info_module, "_installed_client_version", lambda: None)
     adapter = ChatmailAdapter(_make_config())
     adapter._profile = _SYNTHETIC_PROFILE
@@ -263,12 +233,10 @@ async def test_adapter_emits_held_facts_through_core(
     assert info is not None
     assert [(f.name, f.row, f.label) for f in info.fields] == [
         ("account_id", 0, "account"),
-        ("profile", 0, "profile"),
     ]
     assert info.fields[0].value == "1"  # core renders scalars as display strings
-    assert info.fields[1].value == _SYNTHETIC_PROFILE
     assert render_startup_info_block("chatmail.mail-1  ready", info) == (
-        "chatmail.mail-1  ready\n" "  account 1 · profile profile-uuid"
+        "chatmail.mail-1  ready\n" "  account 1"
     )
 
 

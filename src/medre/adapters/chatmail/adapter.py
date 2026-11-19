@@ -730,20 +730,8 @@ class ChatmailAdapter(AdapterContract):
         }
 
     def startup_info(self) -> dict[str, Any]:
-        """Facts the adapter already holds, for core's startup block.
-
-        Core duck-types this callable at the ready transition and renders
-        the returned scalar facts; display ordering and caps are core's
-        business.  Pure read: no RPC or native I/O, no resource
-        acquisition, no session mutation — the profile identity is a
-        single attribute read of state captured at connect time, safe to
-        call from any worker thread.  Facts not held yet (the native
-        profile before a session connects, an installed client version
-        when the package is absent) are omitted rather than probed, and
-        the RPC server's version is never queried: startup info never
-        gates, blocks, or delays the native session.
-        """
-        return build_startup_info(self.config, profile=self._profile or None)
+        """Report the selected account number and installed RPC client version."""
+        return build_startup_info(self.config)
 
     def _native_task_done(self, task: asyncio.Task[None], epoch: int) -> None:
         """Observe unexpected native-owner exit, including cancellation before first execution."""
