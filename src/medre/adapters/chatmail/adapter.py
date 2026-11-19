@@ -31,6 +31,7 @@ from medre.core.supervision.diagnostic_contract import COMMON_DIAGNOSTIC_KEYS
 from .codec import ChatmailCodec, chat_facts, native_id
 from .config import ChatmailConfig, plain_text, sender_name
 from .session import ChatmailSession, RpcCallError, SessionError
+from .startup_info import build_startup_info
 from .state import Journal, PendingLimitError
 
 CAPABILITIES = AdapterCapabilities(
@@ -727,6 +728,10 @@ class ChatmailAdapter(AdapterContract):
             "account_id": self.config.account_id,
             "configured_chats": len(self.config.chats),
         }
+
+    def startup_info(self) -> dict[str, Any]:
+        """Report the selected account number and installed RPC client version."""
+        return build_startup_info(self.config)
 
     def _native_task_done(self, task: asyncio.Task[None], epoch: int) -> None:
         """Observe unexpected native-owner exit, including cancellation before first execution."""

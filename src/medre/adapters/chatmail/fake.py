@@ -15,6 +15,7 @@ from medre.core.supervision.diagnostic_contract import COMMON_DIAGNOSTIC_KEYS
 
 from .adapter import ChatmailAdapter, validate_payload
 from .config import ChatmailConfig, chat_id
+from .startup_info import build_startup_info
 
 
 class FakeChatmailAdapter(ChatmailAdapter):
@@ -69,6 +70,14 @@ class FakeChatmailAdapter(ChatmailAdapter):
             "started": self._started,
             "delivered": len(self.delivered_payloads),
         }
+
+    def startup_info(self) -> dict[str, object]:
+        """Startup facts mirroring the real adapter's pure-read provider.
+
+        The fake never connects a native session, so no native profile
+        identity is ever reported; only configured account facts appear.
+        """
+        return build_startup_info(self.config)
 
     def make_event(
         self,
