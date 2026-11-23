@@ -88,3 +88,69 @@ reported campaign provenance without repeating the campaign or making a fresh
 measurement of historical runtime bytes. It does not authenticate the retained
 observations. This local-relay evidence does not qualify the official Chatmail
 deployment, sustained load, or a full routed core-storage path.
+
+## Independent recipient qualification
+
+`tests/test_live_independent_recipient.py` is a separate opt-in tier. It
+routes three real attempts through the production render and durable-queue
+path — a plain accepted group delivery, a renderer-derived native quote, and
+a reply after RPC reconnect and adapter restart over ingress received while
+MEDRE was stopped — and requires a second, independently controlled native
+profile to observe the exact bound text in the target group. A third sibling
+profile must actively observe its own group without seeing any routed text.
+Cleanup covers only the test's temporary journal state.
+
+The tier records three separately named facts per attempt and never merges
+them: `queue_acceptance` (the adapter retained the attempt),
+`relay_acceptance` (the outgoing SMTP server accepted the handoff, reported
+under the identical ledger identity), and `recipient_observation` (the
+declared peer profile's own native runtime decrypted the bound text). Queue
+returns and relay acceptance cannot qualify as recipient observation. The
+fixture names three distinct profiles, two group conversations with exactly
+one external contact each, and the exact core and provider revisions; the
+test refuses before sending when the running revisions differ, when the
+installed client and server do not match the declared pins, or when a
+required fixture field is missing. Receipt identities must be unique across
+cases; duplicates and unknown peer tags are refusals, never evidence.
+
+Write a private JSON fixture outside the checkout:
+
+```json
+{
+  "core_commit": "core checkout HEAD as 40 hex characters",
+  "provider_commit": "provider checkout HEAD as 40 hex characters",
+  "bot_accounts_dir": "/private/medre-recipient-bot",
+  "bot_account_id": 1,
+  "bot_chat_id": 12,
+  "peer_accounts_dir": "/private/medre-recipient-peer",
+  "peer_account_id": 1,
+  "peer_chat_id": 15,
+  "sibling_accounts_dir": "/private/medre-recipient-sibling",
+  "sibling_account_id": 1,
+  "sibling_chat_id": 18
+}
+```
+
+The bot and peer profiles must share one accepted encrypted group (the peer
+selects it as `peer_chat_id`, the bot as `bot_chat_id`); the sibling profile
+selects a different group in its own directory. Restrict fixture permissions
+to the owner and stop other clients using these profiles:
+
+```bash
+MEDRE_CHATMAIL_RECIPIENT_CONFIG=/private/chatmail-recipient.json \
+  uv run --no-sync pytest tests/test_live_independent_recipient.py -m live -q
+```
+
+The verdict record is validated by
+`scripts/qualify_independent_recipient.py`, which is also exercised SDK-free
+by the default tier in `tests/test_independent_recipient_gate.py`. The
+validator checks completeness and consistency of a content-free record; it
+neither performs the campaign nor verifies the truth of linked observations.
+Record the relay kind and keep credentials, addresses and message bodies out
+of the record. The relay constraint is the same as above: the official relay
+image runs systemd as PID 1 with a writable cgroup volume and was observed
+to exit immediately (status 255, no console output) when started without
+container privileges on a cgroup-v2 host, so the containerized relay tier is
+not built and this tier targets a preconfigured relay. The
+[independent-recipient tier record](evidence/independent-recipient-tier-2026-11-23.json)
+states the tier actually demonstrated at its own revisions.

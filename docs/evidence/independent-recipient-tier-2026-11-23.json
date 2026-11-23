@@ -1,0 +1,44 @@
+{
+  "format": "medre-chatmail-independent-recipient-tier-record",
+  "version": 1,
+  "date": "2026-11-23",
+  "provider_commit": "347ad1af106398c7391b138d43297e1b334e608d",
+  "core_commit": "267336775390fabd20537672ed5af4ea07b82e40",
+  "tier_reached": "gate_logic_proven_and_optin_harness_delivered",
+  "live_tier_executed": false,
+  "runner": "pytest default tier (SDK-free) and pytest -m live refusal rehearsals",
+  "default_tier_gate_tests_passed": 78,
+  "campaign_environment": {
+    "python": "3.14.8",
+    "core_source": "editable install of the core checkout at the recorded core commit",
+    "provider_source": "editable install of this provider checkout at the recorded provider commit",
+    "sdk_client": "2.69.0",
+    "sdk_server": "2.69.0",
+    "sdk_install_outcome": "pinned client and server installed without error"
+  },
+  "refusal_rehearsals": [
+    {
+      "environment": "SDK-free default environment",
+      "revision_binding": "exact recorded revisions",
+      "outcome": "refused",
+      "refusal": "installed SDK client distribution not found"
+    },
+    {
+      "environment": "campaign environment at the recorded revisions",
+      "revision_binding": "exact recorded revisions accepted, then missing native profiles",
+      "outcome": "refused",
+      "refusal": "native profile not provisioned"
+    }
+  ],
+  "relay_probe": {
+    "image": "ghcr.io/chatmail/docker:main",
+    "image_revision": "305d83fff38fafacfbf62931a98f4b0db87e17f9",
+    "image_source": "https://github.com/chatmail/relay",
+    "entrypoint": "systemd as PID 1 with a writable cgroup volume",
+    "host_cgroup": "cgroup v2",
+    "unprivileged_result": "container exits immediately with status 255 and no console output",
+    "host_settings_changed": false,
+    "containerized_relay_built": false
+  },
+  "notes": "No independent recipient observed a message on this machine: no preconfigured relay was reachable and the official relay image does not run unprivileged. The content-free verdict gate and its refusal rules are proven in the default tier; the live tier refuses on revision, SDK and fixture faults before sending. The tier this record claims is exactly the tier named above."
+}
