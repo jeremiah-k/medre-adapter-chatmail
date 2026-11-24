@@ -43,3 +43,9 @@ Describe behavior, compatibility, validation and release impact in the PR.
 Update relevant specifications and tests together. Routine changes do not
 require numbered fragments; optional operator or coordinated-release notes use
 descriptive filenames. Released notes are historical context, not pending work.
+
+## Adapter maintenance
+
+The setup-instructions seam contract behind the README's provisioning journey
+is documented in
+[adapter maintenance](docs/dev/adapter-maintenance.md).

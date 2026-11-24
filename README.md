@@ -1,37 +1,30 @@
-# MEDRE Chatmail adapter
+# medre-adapter-chatmail
 
-Bridge accepted Chatmail group conversations and direct chats through the official
-Python RPC client and native Chatmail core. The provider supplies plain-text
-rendering, durable ingress checkpoints, a bounded outbound queue, and an
-SDK-free fake for offline development.
+The Chatmail adapter for MEDRE.
 
 ## Install
 
-For a persistent bridge, keep core and adapters in one locked uv project:
-
-```bash
-uv init --bare medre-bridge
-cd medre-bridge
-uv add medre medre-adapter-chatmail
-```
-
-Both RPC packages are installed together; no Rust build or separate daemon
-installation is needed. Keep the project lock for reproducible deployments. For Git development
-sources, select immutable revisions.
-`uv run --locked` preserves the project lock when starting commands.
-
-For a persistent MEDRE 0.1.1 or later tool installation:
+Use [uv](https://docs.astral.sh/uv/getting-started/installation/) to install
+MEDRE and this adapter in the same persistent tool environment:
 
 ```bash
 uv tool install medre
 medre adapters install chatmail
 ```
 
-Existing saved Git requests and catalogs retain their sources. On Windows,
-run the printed uv installation command after MEDRE exits. Provision through `medre adapter
-chatmail`; a separately exposed helper executable is unnecessary. The
-standalone `medre-chatmail` entry point remains available in activated project
-environments and uses the same arguments and execution path.
+Both RPC packages are installed together; no Rust build or separate daemon
+installation is needed. On Windows, run the printed uv installation command
+after MEDRE exits. Provision through `medre adapter chatmail`; a separately
+exposed helper executable is unnecessary. The standalone `medre-chatmail`
+entry point remains available in activated project environments and uses the
+same arguments and execution path.
+
+For a persistent bridge, prefer one locked uv project: add `medre` and
+`medre-adapter-chatmail` to the project, keep the committed lock for
+reproducible deployments, and start commands with `uv run --locked`, which
+preserves the project lock. For Git development sources, select immutable
+revisions; existing saved Git requests and catalogs retain their sources. See
+the [adapter installation guide](https://github.com/jeremiah-k/medre/blob/main/docs/ops/adapter-installation.md).
 
 ## Set up a profile
 
@@ -39,26 +32,21 @@ Provisioning proceeds through explicit stages: prerequisites, profile
 provisioning, conversation acceptance and discovery, then offline
 configuration and verification. Profile creation and invitation acceptance
 happen only on these commands; runtime startup never creates an identity or
-accepts an invitation. Chatmail declares no `medre config native` form:
-a profile needs the pinned native tooling that `medre adapter chatmail`
-drives, so the provider contributes these commands instead of an offline
-setup form. On cores that provide the typed setup-instructions seam, the
-provider declares this journey as ordered setup instructions and
-`medre config native --transport chatmail --adapter-id mail --output PATH`
-renders it offline with an `informational_only` classification: the
-contributed commands appear verbatim with a purpose and an evidence note
-each, core never executes them, and no file is written. On older cores this
-README remains the source of the journey. Each stage below states what its
-observations prove and what they leave unproven.
+accepts an invitation. Chatmail contributes these provisioning commands
+instead of an offline setup form; on cores with the typed setup-instructions
+seam, `medre config native` renders this journey informationally — the seam
+contract is described in
+[adapter maintenance](docs/dev/adapter-maintenance.md). Each stage below
+states what its observations prove and what they leave unproven.
 
 > The commands in this journey use `--adapter mail` as an **example** instance.
-> Replace that value consistently with the actual configured provider ID before
+> Replace that value consistently with the actual configured adapter ID before
 > running commands. `medre config native` displays instructions only; it does
 > not substitute IDs, provision accounts, or create a bridge.
 
 ### Prerequisites
 
-- The provider installed in MEDRE's environment (above), with the RPC client
+- The adapter installed in MEDRE's environment (above), with the RPC client
   and native server it ships together.
 - A relay's private `DCACCOUNT:` or `DCLOGIN:` QR payload for `init`.
 - An invitation QR payload (`OPENPGP4FPR:` or an `i.delta.chat` link) for
@@ -100,7 +88,7 @@ conversations. A joined chat proves that this conversation is accepted and
 natively sendable. It does not prove that bridge messages reach their
 recipients.
 
-### Stage 3: configure and verify offline
+## Configure
 
 Save a private `connections.yaml` using the accepted chat IDs from `chats`:
 
@@ -109,12 +97,15 @@ adapters:
   chatmail:
     mail:
       adapter_kind: real
-      account_id: 1 # Replace with the ID reported by 'accounts'.
-      chats: [12] # Replace with the accepted chat IDs from this profile.
+      account_id: 1
+      chats: [12]
       origin_label: Chatmail
+routes: {}
 ```
 
-Then validate without contacting the profile:
+Replace `1` with the account ID reported by `accounts` and `12` with an
+ordinary accepted chat ID from this profile. Then validate without contacting
+the profile:
 
 ```bash
 uv run --locked medre config check --config connections.yaml
@@ -132,7 +123,22 @@ confirmation records retention in the private pending-delivery journal only;
 SMTP handoff is pending. Later correlated `remote_service` feedback confirms
 SMTP-server acceptance, with notes differentiated by native state: the outgoing
 server accepted the message but recipient delivery and reading are unconfirmed,
-or a native MDN (read receipt) confirms reading.
+or a native MDN (read receipt) confirms reading. For options, overrides, and
+troubleshooting, see the
+[Chatmail setup guide](https://github.com/jeremiah-k/medre/blob/main/docs/ops/transport-setup/chatmail.md).
+
+## Verify
+
+Confirm the installed adapter and the saved configuration resolve:
+
+```bash
+medre adapters check --config connections.yaml
+```
+
+The setup guide's
+[Verify](https://github.com/jeremiah-k/medre/blob/main/docs/ops/transport-setup/chatmail.md#verify)
+section shows the bridge checks, delivery evidence levels, and recovery
+behavior.
 
 ## Configuration reference
 
@@ -183,14 +189,16 @@ notifications and puppeting are not advertised. The native core owns SMTP/IMAP,
 cryptography, protocol retries and account storage. MEDRE owns routing and
 lifecycle authority.
 
-See the [provider contract](docs/spec/chatmail.md) and
+See the [adapter contract](docs/spec/chatmail.md) and
 [configuration schema](docs/schemas/config.schema.json).
 
-## Develop and test
+## Development
 
 Use the locked uv development workflow in [contributing](CONTRIBUTING.md).
-It supports core and provider checkouts at arbitrary locations; select the
-native SDK tier explicitly after synchronization.
+It supports core and adapter checkouts at arbitrary locations; select the
+native SDK tier explicitly after synchronization. Maintainer material — the
+setup-instructions seam contract — lives in
+[adapter maintenance](docs/dev/adapter-maintenance.md).
 
 The default tier excludes native SDK and live tests. The SDK tier runs the actual
 pinned RPC client and server against temporary local profiles without an external
@@ -198,22 +206,17 @@ mail service. CI runs both tiers on Python 3.11–3.14 and qualifies the adapter
 against core `main`, resolved once per run. Keep `MEDRE_CORE_REF` unset;
 workflow dispatch accepts an exact candidate core revision.
 The run summary records both resolved commit IDs. SDK constraints are exported
-from core's lock without installing private core test helpers into this provider.
+from core's lock without installing private core test helpers into this adapter.
 
 The [live test](tests/test_live.py) accepts an explicitly prepared relay/profile
 fixture. Native quote presentation requires that independent-peer campaign
 before merging or releasing changes to native reply support; API-shape
 tests alone do not qualify it. See [live testing](docs/live-testing.md). All service fixtures use
 ordinary container permissions; no host system configuration is required by this
-provider's tests.
+adapter's tests.
 
 Per-message native sender attribution is enabled by default. Delta Chat recipients
 see the original sender and origin as a message display name while the bridge
 account and contact profile remain unchanged. Set `native_sender_attribution: false`
-to keep only the configured body prefix. See [the provider contract](docs/spec/chatmail.md#per-message-native-attribution)
+to keep only the configured body prefix. See [the adapter contract](docs/spec/chatmail.md#per-message-native-attribution)
 and [the two-receipt native qualification](docs/evidence/native-sender-2026-10-25.json).
-
-## Development tooling
-
-See [contributing](CONTRIBUTING.md) for the shared Trunk quality gate and uv-based
-editable development workflow.
