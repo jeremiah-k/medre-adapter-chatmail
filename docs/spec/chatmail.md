@@ -1,4 +1,4 @@
-# Chatmail provider contract
+# Chatmail adapter contract
 
 ## Boundary
 

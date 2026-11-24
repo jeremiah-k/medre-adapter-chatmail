@@ -189,7 +189,7 @@ notifications and puppeting are not advertised. The native core owns SMTP/IMAP,
 cryptography, protocol retries and account storage. MEDRE owns routing and
 lifecycle authority.
 
-See the [provider contract](docs/spec/chatmail.md) and
+See the [adapter contract](docs/spec/chatmail.md) and
 [configuration schema](docs/schemas/config.schema.json).
 
 ## Development
@@ -218,5 +218,5 @@ adapter's tests.
 Per-message native sender attribution is enabled by default. Delta Chat recipients
 see the original sender and origin as a message display name while the bridge
 account and contact profile remain unchanged. Set `native_sender_attribution: false`
-to keep only the configured body prefix. See [the provider contract](docs/spec/chatmail.md#per-message-native-attribution)
+to keep only the configured body prefix. See [the adapter contract](docs/spec/chatmail.md#per-message-native-attribution)
 and [the two-receipt native qualification](docs/evidence/native-sender-2026-10-25.json).

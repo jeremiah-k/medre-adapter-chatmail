@@ -20,4 +20,4 @@ bridge confidentiality. A bounded opted-in `public_facts` projection (currently
 transport-neutral bridge context. Capabilities stay unchanged:
 `metadata_fields` remains false because the adapter has no native channel that
 transmits structured metadata fields, and `identity_encryption` remains false
-with its rationale documented on the provider contract page.
+with its rationale documented on the adapter contract page.
