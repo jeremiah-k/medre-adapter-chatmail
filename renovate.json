@@ -21,9 +21,14 @@
       "groupName": "Chatmail RPC client and server"
     },
     {
-      "description": "Keep Python support and deliberate CI minors under project review",
-      "matchDepTypes": ["requires-python", "uses-with"],
-      "matchPackageNames": ["python"],
+      "description": "requires-python is a deliberate support floor, not a pinnable version: pinning it to one CPython release breaks install on every other supported Python",
+      "matchDepTypes": ["requires-python"],
+      "enabled": false
+    },
+    {
+      "description": "CI workflow python-version values follow the deliberate test matrix (3.11-3.14, minor-level); do not patch-pin them",
+      "matchDepTypes": ["uses-with"],
+      "matchDepNames": ["python"],
       "enabled": false
     },
     {
