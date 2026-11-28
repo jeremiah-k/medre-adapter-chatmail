@@ -772,7 +772,7 @@ class ChatmailAdapter(AdapterContract):
             self.adapter_id,
             self.platform,
             self.role,
-            "0.1.0",
+            "0.3.0",
             self._capabilities,
             health=self._state,
         )
