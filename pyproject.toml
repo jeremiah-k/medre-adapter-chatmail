@@ -1,13 +1,13 @@
 [project]
 name = "medre-adapter-chatmail"
-version = "0.2.0"
+version = "0.3.0"
 description = "Chatmail conversations for MEDRE through the official core RPC client"
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
 classifiers = ["Typing :: Typed"]
 dependencies = [
-  "medre>=0.2.0,<0.3.0",
+  "medre>=0.3.0,<0.4.0",
   "deltachat-rpc-client==2.69.0",
   "deltachat-rpc-server==2.69.0",
 ]
